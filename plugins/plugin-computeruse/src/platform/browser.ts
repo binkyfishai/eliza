@@ -51,6 +51,32 @@ let browserHeadless =
     !process.env.DISPLAY &&
     !process.env.WAYLAND_DISPLAY);
 
+export function getBrowserLaunchArgs(options: {
+  headless?: boolean;
+  platform?: ReturnType<typeof currentPlatform>;
+} = {}): string[] {
+  const platform = options.platform ?? currentPlatform();
+  const headless = options.headless ?? browserHeadless;
+  const args = [
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--disable-infobars",
+    "--window-size=1280,900",
+  ];
+
+  if (platform === "linux" && headless) {
+    // Headless Chromium on GitHub-hosted Linux runners intermittently fails
+    // without the standard sandbox/dev-shm compatibility flags.
+    args.push(
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+    );
+  }
+
+  return args;
+}
+
 export function setBrowserRuntimeOptions(options: {
   headless?: boolean;
 }): void {
@@ -177,12 +203,7 @@ export async function openBrowser(url?: string): Promise<BrowserState> {
     executablePath,
     headless: browserHeadless,
     userDataDir: tempUserDataDir,
-    args: [
-      "--no-first-run",
-      "--no-default-browser-check",
-      "--disable-infobars",
-      `--window-size=1280,900`,
-    ],
+    args: getBrowserLaunchArgs(),
     defaultViewport: { width: 1280, height: 900 },
   });
 
