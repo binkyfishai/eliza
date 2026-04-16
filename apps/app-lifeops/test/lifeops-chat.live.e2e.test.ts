@@ -10,8 +10,8 @@ import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../test/helpers/http";
-import { createLiveRuntimeChildEnv } from "../../../../test/helpers/live-child-env.ts";
+} from "../../../packages/app-core/test/helpers/http.ts";
+import { createLiveRuntimeChildEnv } from "../../../packages/app-core/test/helpers/live-child-env.ts";
 import { loadElizaConfig } from "@elizaos/agent/config/config";
 import { judgeTextWithLlm } from "./helpers/lifeops-live-judge.ts";
 

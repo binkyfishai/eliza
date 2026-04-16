@@ -11,11 +11,11 @@ import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../test/helpers/http";
+} from "../../../packages/app-core/test/helpers/http.ts";
 import {
   isLiveTestEnabled,
   selectLiveProvider,
-} from "../../../../test/helpers/live-provider";
+} from "../../../packages/app-core/test/helpers/live-provider.ts";
 import { createRealTestRuntime } from "../../../../test/helpers/real-runtime";
 import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
 

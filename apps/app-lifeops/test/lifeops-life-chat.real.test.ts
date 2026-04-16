@@ -17,7 +17,7 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { selectLiveProvider } from "../../../../test/helpers/live-provider";
+import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider.ts";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,

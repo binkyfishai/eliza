@@ -18,6 +18,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import type { Account } from "viem";
 import {
   initStewardEvmAccount,
   isStewardCloudProvisioned,
@@ -30,7 +31,7 @@ const DUMMY_PRIVATE_KEY =
   "0x0000000000000000000000000000000000000000000000000000000000000001";
 
 /** Stash the account globally so we can retrieve it in the post-start hook. */
-let _stewardAccount: Awaited<ReturnType<typeof initStewardEvmAccount>> = null;
+let _stewardAccount: Account | null = null;
 let _initialized = false;
 
 /**
@@ -122,7 +123,7 @@ export async function stewardEvmPostBoot(
 /**
  * Get the Steward account if initialized (for use by other services).
  */
-export function getStewardEvmAccount() {
+export function getStewardEvmAccount(): Account | null {
   return _stewardAccount;
 }
 

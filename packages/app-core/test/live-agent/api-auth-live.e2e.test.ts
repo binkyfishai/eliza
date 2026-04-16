@@ -10,14 +10,14 @@ import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import {
   isLiveTestEnabled,
   selectLiveProvider,
-} from "../../../../../test/helpers/live-provider";
+} from "../helpers/live-provider.ts";
 import { createRealTestRuntime } from "../../../../../test/helpers/real-runtime";
 import { saveEnv } from "../../../../../test/helpers/test-utils";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../../../test/helpers/http";
+} from "../helpers/http.ts";
 import { createElizaPlugin } from "@elizaos/agent/runtime/eliza-plugin";
 
 const envPath = path.resolve(import.meta.dirname, "..", "..", "..", ".env");

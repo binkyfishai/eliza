@@ -21,7 +21,7 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../../test/helpers/real-runtime";
-import { selectLiveProvider } from "../../../../test/helpers/live-provider";
+import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider.ts";
 import { extractCalendarPlanWithLlm } from "../src/actions/calendar.js";
 import { extractGmailPlanWithLlm } from "../src/actions/gmail.js";
 import { extractLifeOperationWithLlm } from "../src/actions/life.extractor.js";

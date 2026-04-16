@@ -1,7 +1,7 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { createConversation, req } from "../../../../../test/helpers/http.ts";
+import { createConversation, req } from "../../../../packages/app-core/test/helpers/http.ts";
 import type {
   LifeOpsDefinitionEntry,
   LifeOpsGoalEntry,

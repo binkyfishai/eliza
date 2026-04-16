@@ -6,12 +6,12 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
-import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider";
+import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider.ts";
 import {
   createConversation,
   postConversationMessage,
   req,
-} from "../../../packages/app-core/test/helpers/http";
+} from "../../../packages/app-core/test/helpers/http.ts";
 import { createLiveRuntimeChildEnv } from "../../../packages/app-core/test/helpers/live-child-env.ts";
 
 const LIVE_TESTS_ENABLED =

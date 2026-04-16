@@ -3,7 +3,7 @@ import { describeIf } from "../../../../../test/helpers/conditional-tests.ts";
 import {
   selectLiveProvider,
   type LiveProviderConfig,
-} from "../../../../../test/helpers/live-provider";
+} from "../helpers/live-provider.ts";
 import { createRealTestRuntime } from "../../../../../test/helpers/real-runtime";
 
 const LIVE_TESTS_ENABLED =

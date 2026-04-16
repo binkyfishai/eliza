@@ -3,6 +3,9 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  rewriteAndroidBuildGradleAppIdentity,
+  rewriteAppGroupIdentifiers,
+  rewriteIosProjectBundleIdentifiers,
   resolvePlatformTemplateRoot,
   shouldRunIosPodInstall,
   syncPlatformTemplateFiles,
@@ -272,5 +275,35 @@ describe("run-mobile-build", () => {
   it("forces CocoaPods refreshes when the synced files include the iOS Podfile", () => {
     expect(shouldRunIosPodInstall([path.join("App", "Podfile")])).toBe(true);
     expect(shouldRunIosPodInstall(["build.gradle"])).toBe(false);
+  });
+
+  it("rewrites native platform identifiers to the configured app identity", () => {
+    expect(
+      rewriteAndroidBuildGradleAppIdentity(
+        [
+          'namespace "ai.elizaos.app"',
+          'applicationId "ai.elizaos.app"',
+        ].join("\n"),
+        { appId: "com.miladyai.milady" },
+      ),
+    ).toContain('namespace "com.miladyai.milady"');
+
+    expect(
+      rewriteIosProjectBundleIdentifiers(
+        [
+          "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app;",
+          "PRODUCT_BUNDLE_IDENTIFIER = ai.elizaos.app.WebsiteBlockerContentExtension;",
+        ].join("\n"),
+        { appId: "com.miladyai.milady" },
+      ),
+    ).toContain(
+      "PRODUCT_BUNDLE_IDENTIFIER = com.miladyai.milady.WebsiteBlockerContentExtension;",
+    );
+
+    expect(
+      rewriteAppGroupIdentifiers("group.ai.elizaos.app", {
+        appGroup: "group.com.miladyai.milady",
+      }),
+    ).toBe("group.com.miladyai.milady");
   });
 });

@@ -104,6 +104,9 @@ const androidBuildGradleTemplate = path.join(
   androidPlatformSrc,
   "build.gradle",
 );
+const GENERIC_APP_ID = "ai.elizaos.app";
+const GENERIC_APP_GROUP = `group.${GENERIC_APP_ID}`;
+const IOS_EXTENSION_BUNDLE_SUFFIX = "WebsiteBlockerContentExtension";
 
 // ── App identity ────────────────────────────────────────────────────────
 // Read appId and appName from app.config.ts (primary) or capacitor.config.ts
@@ -126,6 +129,34 @@ function readAppIdentity() {
 
 const APP = readAppIdentity();
 console.log(`[mobile-build] App: ${APP.appName} (${APP.appId})`);
+
+export function rewriteAndroidBuildGradleAppIdentity(
+  content,
+  { appId = APP.appId } = {},
+) {
+  return content
+    .replaceAll(`namespace "${GENERIC_APP_ID}"`, `namespace "${appId}"`)
+    .replaceAll(`applicationId "${GENERIC_APP_ID}"`, `applicationId "${appId}"`);
+}
+
+export function rewriteIosProjectBundleIdentifiers(
+  content,
+  { appId = APP.appId } = {},
+) {
+  return content
+    .replaceAll(
+      `${GENERIC_APP_ID}.${IOS_EXTENSION_BUNDLE_SUFFIX}`,
+      `${appId}.${IOS_EXTENSION_BUNDLE_SUFFIX}`,
+    )
+    .replaceAll(GENERIC_APP_ID, appId);
+}
+
+export function rewriteAppGroupIdentifiers(
+  content,
+  { appGroup = APP.appGroup } = {},
+) {
+  return content.replaceAll(GENERIC_APP_GROUP, appGroup);
+}
 
 function run(command, args, { cwd, env = process.env } = {}) {
   return new Promise((resolve, reject) => {
@@ -324,18 +355,9 @@ function overlayAndroidNativeFiles() {
     androidDir, "app", "src", "main", "java", "ai", "elizaos", "app",
   );
 
-  // Detect the host app's namespace so we can add an R import.
-  // The source files live under ai.elizaos.app but R is generated under
-  // the app's own namespace (e.g. com.miladyai.milady).
-  const appBuildGradlePath = path.join(androidDir, "app", "build.gradle");
-  let appNamespace = null;
-  if (fs.existsSync(appBuildGradlePath)) {
-    const gradleContent = fs.readFileSync(appBuildGradlePath, "utf8");
-    const nsMatch = gradleContent.match(/namespace\s*[=:]\s*["']([^"']+)["']/);
-    if (nsMatch) {
-      appNamespace = nsMatch[1];
-    }
-  }
+  // The source files stay under the generic ai.elizaos.app package, but the
+  // generated R class follows the configured host app namespace.
+  const appNamespace = APP.appId;
 
   // -- Copy Java files (GatewayConnectionService + source MainActivity) --
   if (fs.existsSync(srcJavaDir)) {
@@ -349,7 +371,7 @@ function overlayAndroidNativeFiles() {
       // If the host app namespace differs from ai.elizaos.app, the R class
       // lives in the host namespace. Add an explicit import so unqualified
       // R references compile.
-      if (appNamespace && appNamespace !== "ai.elizaos.app") {
+      if (appNamespace && appNamespace !== GENERIC_APP_ID) {
         const rImport = `import ${appNamespace}.R;`;
         if (!content.includes(rImport)) {
           // Insert right after the package declaration line
@@ -429,7 +451,9 @@ function overlayAndroidNativeFiles() {
   const appBuildGradle = path.join(androidDir, "app", "build.gradle");
   if (fs.existsSync(appBuildGradle)) {
     let gradle = fs.readFileSync(appBuildGradle, "utf8");
-    let gradleChanged = false;
+    const identityRewritten = rewriteAndroidBuildGradleAppIdentity(gradle);
+    let gradleChanged = identityRewritten !== gradle;
+    gradle = identityRewritten;
 
     // Enable minification in release builds
     if (gradle.includes("minifyEnabled false")) {
@@ -483,6 +507,13 @@ const IOS_BONJOUR_BLOCK = `\t<key>NSBonjourServices</key>
  */
 function overlayIosNativeFiles() {
   const targetAppDir = path.join(appDir, "ios", "App", "App");
+  const iosProjectPath = path.join(
+    appDir,
+    "ios",
+    "App",
+    "App.xcodeproj",
+    "project.pbxproj",
+  );
 
   // -- Merge Info.plist permission strings --
   const plistPath = path.join(targetAppDir, "Info.plist");
@@ -520,11 +551,7 @@ function overlayIosNativeFiles() {
   const targetEntitlements = path.join(targetAppDir, "App.entitlements");
   if (fs.existsSync(srcEntitlements)) {
     let entitlements = fs.readFileSync(srcEntitlements, "utf8");
-    // Replace the generic app group with the Milady-specific one
-    entitlements = entitlements.replace(
-      "group.ai.elizaos.app",
-      APP.appGroup,
-    );
+    entitlements = rewriteAppGroupIdentifiers(entitlements);
     fs.writeFileSync(targetEntitlements, entitlements, "utf8");
     console.log(`[mobile-build] Copied iOS entitlements (app group: ${APP.appGroup}).`);
   }
@@ -534,6 +561,36 @@ function overlayIosNativeFiles() {
   if (fs.existsSync(srcAppDelegate)) {
     fs.copyFileSync(srcAppDelegate, path.join(targetAppDir, "AppDelegate.swift"));
     console.log("[mobile-build] Copied iOS AppDelegate.swift.");
+  }
+
+  for (const filePath of [
+    path.join(
+      targetAppDir,
+      "WebsiteBlockerContentExtension",
+      "ActionRequestHandler.swift",
+    ),
+    path.join(
+      targetAppDir,
+      "WebsiteBlockerContentExtension",
+      "WebsiteBlockerContentExtension.entitlements",
+    ),
+  ]) {
+    if (!fs.existsSync(filePath)) continue;
+    const current = fs.readFileSync(filePath, "utf8");
+    const next = rewriteAppGroupIdentifiers(current);
+    if (next === current) continue;
+    fs.writeFileSync(filePath, next, "utf8");
+  }
+
+  if (fs.existsSync(iosProjectPath)) {
+    const current = fs.readFileSync(iosProjectPath, "utf8");
+    const next = rewriteIosProjectBundleIdentifiers(current);
+    if (next !== current) {
+      fs.writeFileSync(iosProjectPath, next, "utf8");
+      console.log(
+        `[mobile-build] Rewrote iOS bundle identifiers for ${APP.appId}.`,
+      );
+    }
   }
 
   // -- Patch xcconfigs to include CocoaPods settings --

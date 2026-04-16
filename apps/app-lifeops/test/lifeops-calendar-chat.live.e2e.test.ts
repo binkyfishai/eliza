@@ -19,7 +19,7 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
 } from "../../../../test/helpers/real-runtime";
-import { selectLiveProvider } from "../../../../test/helpers/live-provider";
+import { selectLiveProvider } from "../../../packages/app-core/test/helpers/live-provider.ts";
 import { saveEnv } from "../../../../test/helpers/test-utils";
 import { calendarAction } from "../src/actions/calendar.js";
 import { resolveOAuthDir } from "@elizaos/agent/config/paths";
