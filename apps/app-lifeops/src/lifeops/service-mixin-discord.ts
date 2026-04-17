@@ -65,7 +65,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
   class LifeOpsDiscordServiceMixin extends Base {
-    private async probeTab(
+    async probeTab(
       tabId: string | null,
     ): Promise<DiscordTabProbe | null> {
       if (!tabId) return null;
