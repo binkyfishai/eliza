@@ -1,5 +1,5 @@
 import type { IAgentRuntime, Task, TaskMetadata, UUID } from "@elizaos/core";
-import { logger, stringToUuid } from "@elizaos/core";
+import { logger, runPluginMigrations, stringToUuid } from "@elizaos/core";
 import { loadLifeOpsAppState } from "./app-state.js";
 import { LifeOpsService } from "./service.js";
 import { readTwilioCredentialsFromEnv } from "./twilio.js";
@@ -15,8 +15,67 @@ type AutonomyServiceLike = {
   getAutonomousRoomId?: () => UUID;
 };
 
+type ErrorWithCause = {
+  cause?: unknown;
+  code?: unknown;
+  message?: unknown;
+  query?: unknown;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isErrorWithCause(value: unknown): value is ErrorWithCause {
+  return Boolean(value) && typeof value === "object";
+}
+
+function isMissingTasksTableError(error: unknown): boolean {
+  const queue: unknown[] = [error];
+  const seen = new Set<unknown>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current === undefined || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+
+    if (current instanceof Error) {
+      if (current.message.includes('relation "tasks" does not exist')) {
+        return true;
+      }
+      if (current.cause !== undefined) {
+        queue.push(current.cause);
+      }
+      continue;
+    }
+
+    if (!isErrorWithCause(current)) {
+      continue;
+    }
+
+    if (
+      typeof current.message === "string" &&
+      current.message.includes('relation "tasks" does not exist')
+    ) {
+      return true;
+    }
+
+    if (
+      current.code === "42P01" &&
+      typeof current.query === "string" &&
+      current.query.includes('"tasks"')
+    ) {
+      return true;
+    }
+
+    if (current.cause !== undefined) {
+      queue.push(current.cause);
+    }
+  }
+
+  return false;
 }
 
 function isLifeOpsSchedulerTask(task: Task): boolean {
@@ -102,6 +161,7 @@ async function waitForDbReady(
   delayMs = 500,
 ): Promise<void> {
   let lastError: unknown = null;
+  let migrationRepairAttempts = 0;
   for (let i = 0; i < maxAttempts; i++) {
     try {
       // Light-weight probe: fetch tasks with a filter that should match nothing.
@@ -112,6 +172,15 @@ async function waitForDbReady(
       return;
     } catch (error) {
       lastError = error;
+      if (
+        isMissingTasksTableError(error) &&
+        typeof runtime.runPluginMigrations === "function" &&
+        migrationRepairAttempts < 2
+      ) {
+        migrationRepairAttempts += 1;
+        await runPluginMigrations(runtime);
+        continue;
+      }
       if (i < maxAttempts - 1) {
         await new Promise((r) => setTimeout(r, delayMs));
       }
