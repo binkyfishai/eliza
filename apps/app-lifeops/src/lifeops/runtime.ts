@@ -15,6 +15,10 @@ type AutonomyServiceLike = {
   getAutonomousRoomId?: () => UUID;
 };
 
+type RuntimeWithPluginMigrations = IAgentRuntime & {
+  runPluginMigrations?: () => Promise<void>;
+};
+
 type ErrorWithCause = {
   cause?: unknown;
   code?: unknown;
@@ -113,6 +117,16 @@ export function resolveLifeOpsTaskIntervalMs(agentId: UUID): number {
   return LIFEOPS_TASK_INTERVAL_MS + (hash % (LIFEOPS_TASK_JITTER_MS + 1));
 }
 
+async function rerunPluginMigrations(runtime: IAgentRuntime): Promise<void> {
+  const runtimeWithPluginMigrations = runtime as RuntimeWithPluginMigrations;
+  if (typeof runtimeWithPluginMigrations.runPluginMigrations === "function") {
+    await runtimeWithPluginMigrations.runPluginMigrations();
+    return;
+  }
+
+  await runPluginMigrations(runtime);
+}
+
 export async function executeLifeOpsSchedulerTask(
   runtime: IAgentRuntime,
   options: Record<string, unknown> = {},
@@ -178,7 +192,7 @@ async function waitForDbReady(
         migrationRepairAttempts < 2
       ) {
         migrationRepairAttempts += 1;
-        await runPluginMigrations(runtime);
+        await rerunPluginMigrations(runtime);
         continue;
       }
       if (i < maxAttempts - 1) {
@@ -203,10 +217,32 @@ function logCredentialStatus(): void {
   }
 }
 
+export async function ensureRuntimeAgentRecord(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  const existing = await runtime.getAgent(runtime.agentId);
+  if (existing) {
+    return;
+  }
+
+  await runtime.createAgent({
+    ...runtime.character,
+    id: runtime.agentId,
+  });
+
+  const hydrated = await runtime.getAgent(runtime.agentId);
+  if (!hydrated) {
+    throw new Error(
+      `[lifeops] runtime agent ${runtime.agentId} is missing from the agents table`,
+    );
+  }
+}
+
 export async function ensureLifeOpsSchedulerTask(
   runtime: IAgentRuntime,
 ): Promise<UUID> {
   await waitForDbReady(runtime);
+  await ensureRuntimeAgentRecord(runtime);
   logCredentialStatus();
 
   const tasks = await runtime.getTasks({
