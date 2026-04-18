@@ -241,12 +241,23 @@ export const inboxAction: Action & {
     "MISSED_CALL_FOLLOWUP",
     "GROUP_CHAT_HANDOFF",
   ],
+  tags: [
+    "always-include",
+    "daily brief",
+    "cross-channel inbox",
+    "missed call repair",
+    "group chat handoff",
+    "bump unanswered decision",
+    "unread summary",
+  ],
   description:
     "Unified inbox management: triage new messages across all channels, " +
     "generate a daily digest summary, or draft/send a response to a triaged " +
     "item. Use this for executive-assistant daily briefs, urgent-vs-low " +
     "priority inbox ranking, unread summaries, drafts awaiting sign-off, " +
     "missed-call repair follow-up, and group-chat handoff coordination. " +
+    "Examples: 'triage my inbox', 'give me my inbox digest', or 'respond to the messages that need an answer in my inbox'. " +
+    "If the request is explicitly Gmail or email-specific, about unread emails, or about drafting or sending a reply to a specific email, use GMAIL_ACTION instead. " +
     "Subactions: triage, digest, respond. Admin/owner only.",
   descriptionCompressed:
     "Unified inbox: triage messages, daily digest, draft/send responses. Admin only.",
@@ -362,7 +373,7 @@ export const inboxAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Check my inbox for new messages" },
+        content: { text: "Triage my inbox" },
       },
       {
         name: "{{agentName}}",
@@ -374,7 +385,7 @@ export const inboxAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Give me my daily inbox summary" },
+        content: { text: "Give me my inbox digest" },
       },
       {
         name: "{{agentName}}",
@@ -386,12 +397,12 @@ export const inboxAction: Action & {
     [
       {
         name: "{{name1}}",
-        content: { text: "Respond to Alice's Discord message" },
+        content: { text: "Respond to the messages that need an answer in my inbox" },
       },
       {
         name: "{{agentName}}",
         content: {
-          text: "I'll send this to Alice on Discord DM:\n\n> Hey Alice, yes we're still on for tomorrow!\n\nSay \"send it\" to confirm.",
+          text: "I found 3 inbox items that need a reply. I'll draft the first response for your review.",
         },
       },
     ],
@@ -434,6 +445,20 @@ export const inboxAction: Action & {
         name: "{{agentName}}",
         content: {
           text: "Understood. If the relay gets tangled, I'll suggest a group-chat handoff instead of letting the thread drift.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "If I still haven't answered about those three events, bump me again with context instead of starting over.",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "I'll keep the prior context attached and bump you again about those three events instead of restarting the thread from zero.",
         },
       },
     ],
@@ -528,8 +553,9 @@ async function handleTriage(
   const llmResultMap = new Map<string, TriageResult>();
   for (let i = 0; i < newMessages.length; i++) {
     const result = llmResults[i];
-    if (result) {
-      llmResultMap.set(newMessages[i].id, result);
+    const message = newMessages[i];
+    if (result && message) {
+      llmResultMap.set(message.id, result);
     }
   }
 
@@ -823,7 +849,16 @@ async function handleRespond(
       };
     }
     if (needsReply.length === 1) {
-      entry = needsReply[0];
+      const onlyEntry = needsReply.at(0);
+      if (!onlyEntry) {
+        return {
+          text: "Could not find the inbox item you want to respond to.",
+          success: false,
+          values: { success: false },
+          data: { actionName: ACTION_NAME, subaction: "respond" },
+        };
+      }
+      entry = onlyEntry;
     } else {
       const itemList = needsReply
         .map(
