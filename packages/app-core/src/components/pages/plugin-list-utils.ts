@@ -6,6 +6,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   Binary,
+  Bird,
   BookOpen,
   Bot,
   Brain,
@@ -69,7 +70,6 @@ import {
   Tornado,
   TrendingDown,
   Triangle,
-  Twitter,
   Video,
   Volume2,
   Wallet,
@@ -543,7 +543,7 @@ export const DEFAULT_ICONS: Record<string, LucideIcon> = {
   discord: MessageCircle,
   telegram: Send,
   slack: Briefcase,
-  twitter: Twitter,
+  twitter: Bird,
   whatsapp: Smartphone,
   signal: Lock,
   imessage: MessageSquare,
