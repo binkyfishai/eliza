@@ -1,14 +1,18 @@
+import { Button, Input } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
 import { getAppSlugFromPath } from "../../navigation";
 
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
-import { AppsCatalogGrid } from "../apps/AppsCatalogGrid";
+import { AppDetailSheet } from "../apps/AppDetailSheet";
+import { AppStoreCategoryRail } from "../apps/AppStoreCategoryRail";
+import { AppStoreHeroRail } from "../apps/AppStoreHeroRail";
 import {
   filterAppsForCatalog,
   findAppBySlug,
   getAppSlug,
+  groupAppsForCatalog,
 } from "../apps/helpers";
 import {
   getInternalToolApps,
@@ -41,6 +45,8 @@ export function AppsView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [busyRunId, setBusyRunId] = useState<string | null>(null);
   const [stoppingRunId, setStoppingRunId] = useState<string | null>(null);
+  const [selectedAppName, setSelectedAppName] = useState<string | null>(null);
+  const [launchingAppName, setLaunchingAppName] = useState<string | null>(null);
   const slugAutoLaunchDone = useRef(false);
 
   const activeAppNames = useMemo(
@@ -59,7 +65,6 @@ export function AppsView() {
     currentGameViewerUrl.length > 0 &&
     activeGameRun?.viewerAttachment === "attached";
 
-  /** Push or replace the browser URL to reflect the active app (or browse). */
   const pushAppsUrl = useCallback((slug?: string) => {
     try {
       const path = slug ? `/apps/${slug}` : "/apps";
@@ -121,7 +126,6 @@ export function AppsView() {
         );
       }
       const internalToolApps = getInternalToolApps();
-      // Inject registered overlay apps (e.g. companion) if not already from server
       const overlayDescriptors = getAllOverlayApps()
         .filter((oa) => !serverApps.some((a) => a.name === oa.name))
         .map(overlayAppToRegistryInfo);
@@ -192,15 +196,17 @@ export function AppsView() {
       const internalToolTab = getInternalToolAppTargetTab(app.name);
       if (internalToolTab) {
         setTab(internalToolTab);
+        setSelectedAppName(null);
         return;
       }
 
-      // Overlay apps (e.g. companion) are local-only — launch without server round-trip
       if (isOverlayApp(app.name)) {
         setState("activeOverlayApp", app.name);
         pushAppsUrl(getAppSlug(app.name));
+        setSelectedAppName(null);
         return;
       }
+      setLaunchingAppName(app.name);
       try {
         const result = await client.launchApp(app.name);
         const primaryLaunchDiagnostic =
@@ -235,6 +241,7 @@ export function AppsView() {
           setState("tab", "apps");
           setState("appsSubTab", "games");
           pushAppsUrl(getAppSlug(app.name));
+          setSelectedAppName(null);
           return;
         }
 
@@ -288,17 +295,17 @@ export function AppsView() {
           "error",
           4000,
         );
+      } finally {
+        setLaunchingAppName(null);
       }
     },
     [mergeRun, pushAppsUrl, setActionNotice, setState, setTab, t],
   );
 
-  // Auto-launch from URL slug on first load (e.g. /apps/babylon after refresh)
   useEffect(() => {
     if (slugAutoLaunchDone.current || apps.length === 0) return;
     slugAutoLaunchDone.current = true;
 
-    // Skip if a game run is already restored from sessionStorage
     if (activeGameRunId) return;
 
     const slug = getAppSlugFromPath(
@@ -378,6 +385,7 @@ export function AppsView() {
         setState("tab", "apps");
         setState("appsSubTab", "games");
         pushAppsUrl(getAppSlug(nextRun.appName));
+        setSelectedAppName(null);
         if (nextRun.viewer?.postMessageAuth && !nextRun.viewer.authMessage) {
           setActionNotice(
             t("appsview.IframeAuthMissing", {
@@ -412,6 +420,23 @@ export function AppsView() {
     });
   }, [activeAppNames, apps, searchQuery]);
 
+  const sections = useMemo(
+    () => groupAppsForCatalog(visibleApps, favoriteAppNames),
+    [visibleApps, favoriteAppNames],
+  );
+
+  const selectedApp = useMemo(
+    () => apps.find((app) => app.name === selectedAppName) ?? null,
+    [apps, selectedAppName],
+  );
+  const selectedRun = useMemo(
+    () =>
+      selectedAppName
+        ? (appRuns.find((run) => run.appName === selectedAppName) ?? null)
+        : null,
+    [appRuns, selectedAppName],
+  );
+
   const handleToggleFavorite = useCallback(
     (appName: string) => {
       const current = favoriteApps;
@@ -429,7 +454,6 @@ export function AppsView() {
       setStoppingRunId(run.runId);
       try {
         await client.stopAppRun(run.runId);
-        // Remove the run from local state so the UI updates immediately.
         const nextRuns = appRuns.filter((r) => r.runId !== run.runId);
         setState("appRuns", nextRuns);
         if (activeGameRunId === run.runId) {
@@ -459,7 +483,10 @@ export function AppsView() {
   );
 
   return (
-    <div className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6">
+    <div
+      data-testid="apps-catalog-grid"
+      className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
           Apps
@@ -475,6 +502,31 @@ export function AppsView() {
         ) : null}
       </div>
 
+      <div className="flex flex-wrap items-center gap-3">
+        <Input
+          type="text"
+          aria-label={t("appsview.Search", { defaultValue: "Search apps" })}
+          placeholder={t("appsview.SearchPlaceholder")}
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          className="min-w-[200px] flex-1 rounded-xl border-border/50 bg-card/86 text-xs text-txt placeholder:text-muted focus:border-accent"
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          className="rounded-xl px-3 shadow-sm"
+          onClick={() => void refreshApps()}
+        >
+          {t("common.refresh")}
+        </Button>
+      </div>
+
+      {error ? (
+        <div className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger">
+          {error}
+        </div>
+      ) : null}
+
       <RunningAppsRow
         runs={sortedRuns}
         catalogApps={apps}
@@ -484,16 +536,54 @@ export function AppsView() {
         stoppingRunId={stoppingRunId}
       />
 
-      <AppsCatalogGrid
-        activeAppNames={activeAppNames}
-        error={error}
-        favoriteAppNames={favoriteAppNames}
-        loading={loading}
-        searchQuery={searchQuery}
-        visibleApps={visibleApps}
+      {loading ? (
+        <div className="rounded-2xl border border-border/30 bg-card/72 py-16 text-center text-xs text-muted">
+          {t("appsview.Loading")}
+        </div>
+      ) : visibleApps.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-border/35 bg-card/72 px-6 py-16 text-center">
+          <div className="text-xs font-medium text-muted-strong">
+            {searchQuery
+              ? t("appsview.NoAppsMatchSearch")
+              : t("appsview.NoAppsAvailable")}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {searchQuery.trim().length === 0 ? (
+            <AppStoreHeroRail
+              apps={visibleApps}
+              activeAppNames={activeAppNames}
+              onSelect={(app) => setSelectedAppName(app.name)}
+            />
+          ) : null}
+
+          {sections.map((section) => (
+            <AppStoreCategoryRail
+              key={section.key}
+              title={section.label}
+              apps={section.apps}
+              activeAppNames={activeAppNames}
+              favoriteAppNames={favoriteAppNames}
+              onSelect={(app) => setSelectedAppName(app.name)}
+              onToggleFavorite={handleToggleFavorite}
+            />
+          ))}
+        </div>
+      )}
+
+      <AppDetailSheet
+        app={selectedApp}
+        run={selectedRun}
+        isFavorite={
+          selectedAppName ? favoriteAppNames.has(selectedAppName) : false
+        }
+        isLaunching={launchingAppName === selectedAppName}
+        isStopping={selectedRun ? stoppingRunId === selectedRun.runId : false}
+        onClose={() => setSelectedAppName(null)}
         onLaunch={(app) => void handleLaunch(app)}
-        onRefresh={() => void refreshApps()}
-        onSearchQueryChange={setSearchQuery}
+        onOpenRun={(run) => void handleOpenRun(run)}
+        onStopRun={(run) => void handleStopRun(run)}
         onToggleFavorite={handleToggleFavorite}
       />
     </div>
