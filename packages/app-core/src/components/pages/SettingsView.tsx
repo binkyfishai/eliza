@@ -25,7 +25,17 @@ import {
   Switch,
   useLinkedSidebarSelection,
 } from "@elizaos/ui";
-import { AlertTriangle, Download, Upload } from "lucide-react";
+import {
+  AlertTriangle,
+  Download,
+  GraduationCap,
+  Globe,
+  type LucideIcon,
+  Monitor,
+  Terminal,
+  Upload,
+  Wallet as WalletIcon,
+} from "lucide-react";
 import {
   type ComponentPropsWithoutRef,
   forwardRef,
@@ -41,6 +51,7 @@ import { WidgetHost } from "../../widgets";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { MediaSettingsSection } from "../settings/MediaSettingsSection";
+import { useDesktopPermissionsState } from "../settings/permission-controls";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
 import { CloudDashboard } from "./ElizaCloudDashboard";
@@ -337,6 +348,66 @@ const SettingsSection = forwardRef<HTMLElement, SettingsSectionProps>(
 
 /* ── Capabilities Section ────────────────────────────────────────────── */
 
+interface FeatureTileProps {
+  icon: LucideIcon;
+  label: string;
+  description: string;
+  enabled: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+}
+
+function FeatureTile({
+  icon: Icon,
+  label,
+  description,
+  enabled,
+  onChange,
+  disabled = false,
+}: FeatureTileProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => !disabled && onChange(!enabled)}
+      disabled={disabled}
+      aria-pressed={enabled}
+      className={cn(
+        "group relative flex min-h-[6.5rem] w-full flex-col items-start gap-2 rounded-xl border px-3 py-3 text-left transition-all",
+        "disabled:cursor-not-allowed disabled:opacity-60",
+        enabled
+          ? "border-accent/40 bg-accent/10 shadow-[0_0_0_1px_rgba(var(--accent-rgb),0.14)]"
+          : "border-border/50 bg-card/70 hover:border-border hover:bg-bg-hover",
+      )}
+    >
+      <div className="flex w-full items-center justify-between gap-2">
+        <div
+          className={cn(
+            "flex h-8 w-8 items-center justify-center rounded-lg",
+            enabled ? "bg-accent/20 text-accent" : "bg-bg/60 text-muted",
+          )}
+        >
+          <Icon className="h-4 w-4" />
+        </div>
+        <Switch
+          checked={enabled}
+          onCheckedChange={(checked: boolean | "indeterminate") => {
+            if (!disabled) onChange(!!checked);
+          }}
+          disabled={disabled}
+          aria-label={label}
+          onClick={(event) => event.stopPropagation()}
+        />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-txt">{label}</div>
+        <div className="mt-0.5 line-clamp-2 text-2xs text-muted leading-snug">
+          {description}
+        </div>
+      </div>
+    </button>
+  );
+}
+
 function CapabilitiesSection() {
   const {
     walletEnabled,
@@ -346,6 +417,10 @@ function CapabilitiesSection() {
     setState,
     t,
   } = useApp();
+  const { shellEnabled, handleToggleShell } = useDesktopPermissionsState();
+  // TODO: wire to backend once auto-training exposes an enable/disable gate
+  // (currently only threshold config via /api/training/auto/config).
+  const [autoTrainingEnabled, setAutoTrainingEnabled] = useState(false);
   const [computerUseApprovalMode, setComputerUseApprovalMode] =
     useState<ComputerUseApprovalMode>("full_control");
   const [computerUseModeBusy, setComputerUseModeBusy] = useState(false);
@@ -409,76 +484,62 @@ function CapabilitiesSection() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <div className="font-medium text-sm">
-            {t("settings.sections.capabilities.walletLabel", {
-              defaultValue: "Enable Wallet",
-            })}
-          </div>
-          <div className="text-xs text-muted">
-            {t("settings.sections.wallet.enableHint", {
-              defaultValue:
-                "Show the Wallet tab for managing crypto wallets and token balances",
-            })}
-          </div>
-        </div>
-        <Switch
-          checked={walletEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") =>
-            setState("walletEnabled", !!checked)
-          }
-          aria-label={t("settings.sections.capabilities.walletLabel", {
-            defaultValue: "Enable Wallet",
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <FeatureTile
+          icon={WalletIcon}
+          label={t("settings.sections.capabilities.walletLabel", {
+            defaultValue: "Wallet",
           })}
+          description={t("settings.sections.wallet.enableHint", {
+            defaultValue: "Crypto wallets + token balances tab",
+          })}
+          enabled={walletEnabled}
+          onChange={(next) => setState("walletEnabled", next)}
         />
-      </div>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <div className="font-medium text-sm">
-            {t("settings.sections.capabilities.browserLabel", {
-              defaultValue: "Enable Browser",
-            })}
-          </div>
-          <div className="text-xs text-muted">
-            {t("settings.sections.capabilities.browserHint", {
-              defaultValue:
-                "Show the Browser tab for agent-controlled web browsing",
-            })}
-          </div>
-        </div>
-        <Switch
-          checked={browserEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") =>
-            setState("browserEnabled", !!checked)
-          }
-          aria-label={t("settings.sections.capabilities.browserLabel", {
-            defaultValue: "Enable Browser",
+        <FeatureTile
+          icon={Monitor}
+          label={t("settings.sections.capabilities.computerUseLabel", {
+            defaultValue: "Computer Use",
           })}
+          description={t("settings.sections.capabilities.computerUseHint", {
+            defaultValue:
+              "Agent can control mouse, keyboard, screenshots, browsers",
+          })}
+          enabled={computerUseEnabled}
+          onChange={(next) => setState("computerUseEnabled", next)}
         />
-      </div>
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <div className="font-medium text-sm">
-            {t("settings.sections.capabilities.computerUseLabel", {
-              defaultValue: "Enable Computer Use",
-            })}
-          </div>
-          <div className="text-xs text-muted">
-            {t("settings.sections.capabilities.computerUseHint", {
-              defaultValue:
-                "Allow the agent to control your mouse, keyboard, take screenshots, and automate browsers",
-            })}
-          </div>
-        </div>
-        <Switch
-          checked={computerUseEnabled}
-          onCheckedChange={(checked: boolean | "indeterminate") =>
-            setState("computerUseEnabled", !!checked)
-          }
-          aria-label={t("settings.sections.capabilities.computerUseLabel", {
-            defaultValue: "Enable Computer Use",
+        <FeatureTile
+          icon={Terminal}
+          label={t("settings.sections.capabilities.shellLabel", {
+            defaultValue: "Shell",
           })}
+          description={t("settings.sections.capabilities.shellHint", {
+            defaultValue: "Allow the agent to run shell commands",
+          })}
+          enabled={shellEnabled}
+          onChange={() => handleToggleShell()}
+        />
+        <FeatureTile
+          icon={Globe}
+          label={t("settings.sections.capabilities.browserLabel", {
+            defaultValue: "Browser",
+          })}
+          description={t("settings.sections.capabilities.browserHint", {
+            defaultValue: "Agent-controlled web browsing tab",
+          })}
+          enabled={browserEnabled}
+          onChange={(next) => setState("browserEnabled", next)}
+        />
+        <FeatureTile
+          icon={GraduationCap}
+          label={t("settings.sections.capabilities.autoTrainingLabel", {
+            defaultValue: "Auto Training",
+          })}
+          description={t("settings.sections.capabilities.autoTrainingHint", {
+            defaultValue: "Optimize prompts from trajectories automatically",
+          })}
+          enabled={autoTrainingEnabled}
+          onChange={(next) => setAutoTrainingEnabled(next)}
         />
       </div>
       {computerUseEnabled && (
@@ -1038,7 +1099,7 @@ export function SettingsView({
         </div>
       }
     >
-      <SidebarScrollRegion>
+      <SidebarScrollRegion className="scrollbar-hide">
         <SidebarPanel>
           {visibleSections.length === 0 ? (
             <SidebarContent.EmptyState className="px-4 py-6">
