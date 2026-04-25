@@ -17,6 +17,7 @@ import {
 } from "../../voice/types";
 import { WidgetHost } from "../../widgets";
 import { KnowledgeView } from "../pages/KnowledgeView";
+import { LearnedSkillsPanel } from "../settings/LearnedSkills";
 import {
   CharacterExamplesPanel,
   CharacterIdentityPanel,
@@ -134,6 +135,7 @@ const CHARACTER_EDITOR_PAGES = [
   "style",
   "examples",
   "knowledge",
+  "skills",
 ] as const;
 
 /**
@@ -252,7 +254,7 @@ export function CharacterEditor({
   const [generating, setGenerating] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
   const [activePage, setActivePage] = useState<
-    "personality" | "style" | "examples" | "knowledge"
+    "personality" | "style" | "examples" | "knowledge" | "skills"
   >(tab === "knowledge" ? "knowledge" : "personality");
   const [rightTab, setRightTab] = useState<"style" | "examples">("style");
   const [customizing, setCustomizing] = useState(false);
@@ -1267,7 +1269,7 @@ export function CharacterEditor({
     characterSaveSuccess || combinedSaveError || generateError,
   );
   const standaloneContentHeader =
-    activePage === "knowledge" ? null : (
+    activePage === "knowledge" || activePage === "skills" ? null : (
       <div className="flex flex-col items-end gap-2">
         {renderContentActionButtons("ce-vrm-upload-standalone")}
         {renderSaveFeedback()}
@@ -1403,9 +1405,13 @@ export function CharacterEditor({
                           ? t("charactereditor.TabExamples", {
                               defaultValue: "Examples",
                             })
-                          : t("charactereditor.TabKnowledge", {
-                              defaultValue: "Knowledge",
-                            })}
+                          : page === "knowledge"
+                            ? t("charactereditor.TabKnowledge", {
+                                defaultValue: "Knowledge",
+                              })
+                            : t("charactereditor.TabSkills", {
+                                defaultValue: "Skills",
+                              })}
                   </button>
                 ))}
               </div>
@@ -1653,6 +1659,11 @@ export function CharacterEditor({
               {activePage === "knowledge" && (
                 <div className="flex flex-col flex-1 min-h-[60vh]">
                   <KnowledgeView embedded />
+                </div>
+              )}
+              {activePage === "skills" && (
+                <div className="flex flex-col flex-1 min-h-[60vh]">
+                  <LearnedSkillsPanel />
                 </div>
               )}
             </div>
