@@ -23,6 +23,7 @@ import {
   savePersistedActivePackUrl,
   useApp,
 } from "../../state";
+import { CompanionPerfPanel } from "./MediaSettingsSection";
 
 function supportsDirectoryUpload(): boolean {
   if (typeof document === "undefined") return false;
@@ -32,7 +33,18 @@ function supportsDirectoryUpload(): boolean {
   return "webkitdirectory" in input;
 }
 
-export function AppearanceSettingsSection() {
+interface AppearanceSettingsSectionProps {
+  /**
+   * When true, also render the CompanionPerfPanel (3D companion render
+   * mode, half-framerate toggle, animate-in-background switch). Hidden by
+   * default since these are GPU-tuning options most users won't change.
+   */
+  showAdvanced?: boolean;
+}
+
+export function AppearanceSettingsSection({
+  showAdvanced = false,
+}: AppearanceSettingsSectionProps = {}) {
   const {
     setState,
     activePackId,
@@ -450,6 +462,17 @@ export function AppearanceSettingsSection() {
           </Button>
         )}
       </section>
+
+      {showAdvanced && (
+        <section className="space-y-2">
+          <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
+            {t("settings.appearance.companionPerf", {
+              defaultValue: "Companion performance",
+            })}
+          </h3>
+          <CompanionPerfPanel />
+        </section>
+      )}
     </div>
   );
 }

@@ -166,28 +166,12 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     ],
     level: "advanced",
   },
-  {
-    id: "media",
-    label: "settings.sections.media.label",
-    description: "settings.sections.media.desc",
-    keywords: [
-      "audio",
-      "voice",
-      "video",
-      "camera",
-      "microphone",
-      "speech",
-      "tts",
-      "avatar",
-    ],
-    keywordKeys: [
-      "settings.keyword.voice",
-      "settings.keyword.audio",
-      "settings.keyword.camera",
-      "settings.keyword.microphone",
-    ],
-    level: "simple",
-  },
+  // "media" entry removed: the Generation tabs (image / video / audio /
+  // vision / voice) now live inside the AI Model section, and the
+  // companion-performance controls moved to Appearance. The music player
+  // surface is being lifted out into its own app. Search keywords for the
+  // media-related concepts stay reachable via the AI Model and Appearance
+  // entries below.
   {
     id: "appearance",
     label: "settings.sections.appearance.label",
@@ -1153,46 +1137,41 @@ export function SettingsView({
       )}
 
       {(visibleSectionIds.has("ai-model") ||
-        visibleSectionIds.has("media") ||
         visibleSectionIds.has("appearance")) && (
         <div className="grid gap-5 xl:grid-cols-2 items-start">
-          <div className="flex flex-col gap-5 min-w-0">
-            {visibleSectionIds.has("ai-model") && (
-              <SettingsSection
-                id="ai-model"
-                title={t("settings.sections.aimodel.label")}
-                description={t("settings.sections.aimodel.desc")}
-                ref={registerContentItem("ai-model")}
-              >
-                <ProviderSwitcher showAdvanced={complexity === "advanced"} />
-              </SettingsSection>
-            )}
-
-            {visibleSectionIds.has("appearance") && (
-              <SettingsSection
-                id="appearance"
-                title={t("settings.sections.appearance.label", {
-                  defaultValue: "Appearance",
-                })}
-                description={t("settings.sections.appearance.desc", {
-                  defaultValue:
-                    "Content packs, VRM avatars, backgrounds, and themes",
-                })}
-                ref={registerContentItem("appearance")}
-              >
-                <AppearanceSettingsSection />
-              </SettingsSection>
-            )}
-          </div>
-
-          {visibleSectionIds.has("media") && (
+          {visibleSectionIds.has("ai-model") && (
             <SettingsSection
-              id="media"
-              title={t("settings.sections.media.label")}
-              description={t("settings.sections.media.desc")}
-              ref={registerContentItem("media")}
+              id="ai-model"
+              title={t("settings.sections.aimodel.label")}
+              description={t("settings.sections.aimodel.desc")}
+              ref={registerContentItem("ai-model")}
             >
-              <MediaSettingsSection showAdvanced={complexity === "advanced"} />
+              <div className="flex flex-col gap-5">
+                <ProviderSwitcher showAdvanced={complexity === "advanced"} />
+                {/* Generation tabs (image / video / audio / vision / voice)
+                    used to live in their own "Media" SettingsSection; folded
+                    in here so provider routing + generation models live in
+                    one place. */}
+                <MediaSettingsSection />
+              </div>
+            </SettingsSection>
+          )}
+
+          {visibleSectionIds.has("appearance") && (
+            <SettingsSection
+              id="appearance"
+              title={t("settings.sections.appearance.label", {
+                defaultValue: "Appearance",
+              })}
+              description={t("settings.sections.appearance.desc", {
+                defaultValue:
+                  "Content packs, VRM avatars, backgrounds, and themes",
+              })}
+              ref={registerContentItem("appearance")}
+            >
+              <AppearanceSettingsSection
+                showAdvanced={complexity === "advanced"}
+              />
             </SettingsSection>
           )}
         </div>

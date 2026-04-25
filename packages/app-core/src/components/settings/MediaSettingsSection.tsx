@@ -58,6 +58,117 @@ function segmentedButtonClass(active: boolean): string {
   return `${SEGMENTED_BUTTON_BASE} ${active ? SEGMENTED_BUTTON_ACTIVE : SEGMENTED_BUTTON_INACTIVE}`;
 }
 
+// ── Companion performance panel ──────────────────────────────────────
+
+/**
+ * Avatar / companion render-mode controls. Lives in this file because the
+ * earlier MediaSettingsSection used to host them; now it's exported so the
+ * Appearance section can mount it next to VRM/theme settings (companion
+ * performance is conceptually about the avatar, not media generation).
+ *
+ * Only renders when the host shell has companion support compiled in
+ * (`COMPANION_ENABLED`) — on web/headless builds the whole block is
+ * absent. The `showAdvanced` gate lives at the call site so the host
+ * section decides whether its own Advanced toggle reveals it.
+ */
+export function CompanionPerfPanel() {
+  const {
+    t,
+    companionVrmPowerMode,
+    setCompanionVrmPowerMode,
+    companionAnimateWhenHidden,
+    setCompanionAnimateWhenHidden,
+    companionHalfFramerateMode,
+    setCompanionHalfFramerateMode,
+  } = useApp();
+
+  if (!COMPANION_ENABLED) return null;
+
+  return (
+    <div
+      className="rounded-xl border border-border bg-card/60 px-3 py-3 flex flex-col gap-3"
+      data-testid="settings-companion-vrm-power"
+    >
+      <div className="min-w-0">
+        <div className="text-xs font-semibold text-txt">
+          {t("settings.companionVrmPower.label")}
+        </div>
+        <div className="text-2xs text-muted mt-1 leading-snug">
+          {t("settings.companionVrmPower.desc")}
+        </div>
+      </div>
+      <SettingsControls.SegmentedGroup>
+        {COMPANION_VRM_POWER_OPTIONS.map((mode) => {
+          const active = companionVrmPowerMode === mode;
+          return (
+            <Button
+              key={mode}
+              type="button"
+              variant={active ? "default" : "ghost"}
+              size="sm"
+              className={segmentedButtonClass(active)}
+              onClick={() => setCompanionVrmPowerMode(mode)}
+              aria-pressed={active}
+            >
+              {t(`settings.companionVrmPower.${mode}`)}
+            </Button>
+          );
+        })}
+      </SettingsControls.SegmentedGroup>
+      <div
+        className="flex flex-col gap-2 pt-3"
+        data-testid="settings-companion-half-framerate"
+      >
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-txt">
+            {t("settings.companionHalfFramerate.label")}
+          </div>
+          <div className="text-2xs text-muted mt-1 leading-snug">
+            {t("settings.companionHalfFramerate.desc")}
+          </div>
+        </div>
+        <SettingsControls.SegmentedGroup>
+          {COMPANION_HALF_FRAMERATE_OPTIONS.map((mode) => {
+            const active = companionHalfFramerateMode === mode;
+            return (
+              <Button
+                key={mode}
+                type="button"
+                variant={active ? "default" : "ghost"}
+                size="sm"
+                className={segmentedButtonClass(active)}
+                onClick={() => setCompanionHalfFramerateMode(mode)}
+                aria-pressed={active}
+              >
+                {t(`settings.companionHalfFramerate.${mode}`)}
+              </Button>
+            );
+          })}
+        </SettingsControls.SegmentedGroup>
+      </div>
+      <div
+        className="flex flex-col gap-2 pt-3"
+        data-testid="settings-companion-animate-when-hidden"
+      >
+        <div className="text-xs font-semibold text-txt">
+          {t("settings.companionAnimateWhenHidden.title")}
+        </div>
+        <div className="flex items-end justify-between gap-3">
+          <div className="min-w-0 flex-1 text-2xs text-muted leading-snug pr-2">
+            {t("settings.companionAnimateWhenHidden.desc")}
+          </div>
+          <Switch
+            className="shrink-0"
+            checked={companionAnimateWhenHidden}
+            onCheckedChange={(v: boolean) => setCompanionAnimateWhenHidden(v)}
+            aria-label={t("settings.companionAnimateWhenHidden.title")}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ───────────────────────────────────────────────────
 
 const CATEGORY_ICONS: Record<MediaCategory, typeof Image> = {
@@ -108,29 +219,15 @@ const CLOUD_MODEL_OPTIONS: Record<
   ],
 };
 
-interface MediaSettingsSectionProps {
-  /**
-   * When true, render the 3D companion performance controls (GPU power mode,
-   * half frame-rate toggle, animate-in-background). Hidden by default.
-   */
-  showAdvanced?: boolean;
-}
-
-export function MediaSettingsSection({
-  showAdvanced = false,
-}: MediaSettingsSectionProps = {}) {
+/**
+ * Generation tabs for image / video / audio / vision / voice. Lives inside
+ * the AI Model settings card; companion-performance UI moved to Appearance
+ * (see CompanionPerfPanel above).
+ */
+export function MediaSettingsSection() {
   const { setTimeout } = useTimeout();
 
-  const {
-    t,
-    elizaCloudConnected,
-    companionVrmPowerMode,
-    setCompanionVrmPowerMode,
-    companionAnimateWhenHidden,
-    setCompanionAnimateWhenHidden,
-    companionHalfFramerateMode,
-    setCompanionHalfFramerateMode,
-  } = useApp();
+  const { t, elizaCloudConnected } = useApp();
   const [mediaConfig, setMediaConfig] = useState<MediaConfig>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -265,92 +362,6 @@ export function MediaSettingsSection({
 
   return (
     <div className="flex flex-col gap-4">
-      {COMPANION_ENABLED && showAdvanced && (
-        <div
-          className="rounded-xl border border-border bg-card/60 px-3 py-3 flex flex-col gap-3"
-          data-testid="settings-companion-vrm-power"
-        >
-          <div className="min-w-0">
-            <div className="text-xs font-semibold text-txt">
-              {t("settings.companionVrmPower.label")}
-            </div>
-            <div className="text-2xs text-muted mt-1 leading-snug">
-              {t("settings.companionVrmPower.desc")}
-            </div>
-          </div>
-          <SettingsControls.SegmentedGroup>
-            {COMPANION_VRM_POWER_OPTIONS.map((mode) => {
-              const active = companionVrmPowerMode === mode;
-              return (
-                <Button
-                  key={mode}
-                  type="button"
-                  variant={active ? "default" : "ghost"}
-                  size="sm"
-                  className={segmentedButtonClass(active)}
-                  onClick={() => setCompanionVrmPowerMode(mode)}
-                  aria-pressed={active}
-                >
-                  {t(`settings.companionVrmPower.${mode}`)}
-                </Button>
-              );
-            })}
-          </SettingsControls.SegmentedGroup>
-          <div
-            className="flex flex-col gap-2 pt-3"
-            data-testid="settings-companion-half-framerate"
-          >
-            <div className="min-w-0">
-              <div className="text-xs font-semibold text-txt">
-                {t("settings.companionHalfFramerate.label")}
-              </div>
-              <div className="text-2xs text-muted mt-1 leading-snug">
-                {t("settings.companionHalfFramerate.desc")}
-              </div>
-            </div>
-            <SettingsControls.SegmentedGroup>
-              {COMPANION_HALF_FRAMERATE_OPTIONS.map((mode) => {
-                const active = companionHalfFramerateMode === mode;
-                return (
-                  <Button
-                    key={mode}
-                    type="button"
-                    variant={active ? "default" : "ghost"}
-                    size="sm"
-                    className={segmentedButtonClass(active)}
-                    onClick={() => setCompanionHalfFramerateMode(mode)}
-                    aria-pressed={active}
-                  >
-                    {t(`settings.companionHalfFramerate.${mode}`)}
-                  </Button>
-                );
-              })}
-            </SettingsControls.SegmentedGroup>
-          </div>
-          <div
-            className="flex flex-col gap-2 pt-3"
-            data-testid="settings-companion-animate-when-hidden"
-          >
-            <div className="text-xs font-semibold text-txt">
-              {t("settings.companionAnimateWhenHidden.title")}
-            </div>
-            <div className="flex items-end justify-between gap-3">
-              <div className="min-w-0 flex-1 text-2xs text-muted leading-snug pr-2">
-                {t("settings.companionAnimateWhenHidden.desc")}
-              </div>
-              <Switch
-                className="shrink-0"
-                checked={companionAnimateWhenHidden}
-                onCheckedChange={(v: boolean) =>
-                  setCompanionAnimateWhenHidden(v)
-                }
-                aria-label={t("settings.companionAnimateWhenHidden.title")}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* biome-ignore lint/a11y/useSemanticElements: existing pattern */}
       <div
         className="flex flex-col gap-4 rounded-xl border border-border/70 bg-card/85 px-3 py-3 shadow-sm"
