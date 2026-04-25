@@ -47,6 +47,28 @@ const SUBSCRIPTION_PROVIDER_LABEL_FALLBACKS: Record<
   "openai-subscription": "ChatGPT Subscription",
 };
 
+/**
+ * Position-relative tier preset specs. We don't hardcode model IDs because
+ * the cloud catalog rotates: a stable index into the per-tier modelOptions
+ * list keeps presets working as new models replace old ones. -1 means
+ * "last entry" (highest-capability in a sorted catalog).
+ */
+type CloudTierName = "nano" | "small" | "medium" | "large" | "mega";
+type CloudTierPresetName = "economy" | "balanced" | "professional";
+type CloudTierPresetSpec = Record<CloudTierName, number>;
+
+const CLOUD_TIER_PRESETS: Record<CloudTierPresetName, CloudTierPresetSpec> = {
+  economy: { nano: 0, small: 0, medium: 0, large: 0, mega: 0 },
+  balanced: { nano: 0, small: 0, medium: 1, large: 1, mega: 0 },
+  professional: { nano: -1, small: -1, medium: -1, large: -1, mega: -1 },
+};
+
+const CLOUD_TIER_PRESET_ORDER: ReadonlyArray<CloudTierPresetName> = [
+  "economy",
+  "balanced",
+  "professional",
+];
+
 interface PluginInfo {
   id: string;
   name: string;
@@ -606,6 +628,140 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     ],
   );
 
+  /* ── Tier presets (simple mode) ───────────────────────────────── */
+
+  const resolvePresetSelection = useCallback(
+    (preset: CloudTierPresetName) => {
+      if (!modelOptions) return null;
+      const pickFromList = (list: { id: string }[], index: number): string =>
+        list.length === 0
+          ? ""
+          : index < 0
+            ? (list[list.length - 1]?.id ?? "")
+            : (list[Math.min(index, list.length - 1)]?.id ?? "");
+      const spec = CLOUD_TIER_PRESETS[preset];
+      return {
+        nano: pickFromList(modelOptions.nano ?? [], spec.nano),
+        small: pickFromList(modelOptions.small ?? [], spec.small),
+        medium: pickFromList(modelOptions.medium ?? [], spec.medium),
+        large: pickFromList(modelOptions.large ?? [], spec.large),
+        mega: pickFromList(modelOptions.mega ?? [], spec.mega),
+      };
+    },
+    [modelOptions],
+  );
+
+  const activePreset = useMemo<CloudTierPresetName | null>(() => {
+    if (!modelOptions) return null;
+    const current = {
+      nano: currentNanoModel,
+      small: currentSmallModel,
+      medium: currentMediumModel,
+      large: currentLargeModel,
+      mega: currentMegaModel,
+    };
+    for (const name of CLOUD_TIER_PRESET_ORDER) {
+      const target = resolvePresetSelection(name);
+      if (!target) continue;
+      if (
+        target.nano === current.nano &&
+        target.small === current.small &&
+        target.medium === current.medium &&
+        target.large === current.large &&
+        target.mega === current.mega
+      ) {
+        return name;
+      }
+    }
+    return null;
+  }, [
+    currentLargeModel,
+    currentMediumModel,
+    currentMegaModel,
+    currentNanoModel,
+    currentSmallModel,
+    modelOptions,
+    resolvePresetSelection,
+  ]);
+
+  const applyModelPreset = useCallback(
+    (preset: CloudTierPresetName) => {
+      const next = resolvePresetSelection(preset);
+      if (!next) return;
+
+      setCurrentNanoModel(next.nano);
+      setCurrentSmallModel(next.small);
+      setCurrentMediumModel(next.medium);
+      setCurrentLargeModel(next.large);
+      setCurrentMegaModel(next.mega);
+
+      void (async () => {
+        setModelSaving(true);
+        try {
+          const cfg = (await client.getConfig()) as Record<string, unknown>;
+          const existingRouting = resolveServiceRoutingInConfig(cfg)?.llmText;
+          const llmText = buildElizaCloudServiceRoute({
+            nanoModel: next.nano,
+            smallModel: next.small,
+            mediumModel: next.medium,
+            largeModel: next.large,
+            megaModel: next.mega,
+            ...(currentResponseHandlerModel &&
+            currentResponseHandlerModel !== DEFAULT_RESPONSE_HANDLER_MODEL
+              ? { responseHandlerModel: currentResponseHandlerModel }
+              : {}),
+            ...(currentActionPlannerModel &&
+            currentActionPlannerModel !== DEFAULT_ACTION_PLANNER_MODEL
+              ? { actionPlannerModel: currentActionPlannerModel }
+              : {}),
+            ...(existingRouting?.shouldRespondModel
+              ? { shouldRespondModel: existingRouting.shouldRespondModel }
+              : {}),
+            ...(existingRouting?.plannerModel
+              ? { plannerModel: existingRouting.plannerModel }
+              : {}),
+            ...(existingRouting?.responseModel
+              ? { responseModel: existingRouting.responseModel }
+              : {}),
+            ...(existingRouting?.mediaDescriptionModel
+              ? {
+                  mediaDescriptionModel:
+                    existingRouting.mediaDescriptionModel,
+                }
+              : {}),
+          });
+          await client.updateConfig({
+            models: {
+              nano: next.nano,
+              small: next.small,
+              medium: next.medium,
+              large: next.large,
+              mega: next.mega,
+            },
+            serviceRouting: {
+              ...(((cfg.serviceRouting as Record<string, unknown> | null) ??
+                {}) as Record<string, unknown>),
+              llmText,
+            },
+          });
+          setModelSaveSuccess(true);
+          setTimeout(() => setModelSaveSuccess(false), 2000);
+          await client.restartAgent();
+        } catch (err) {
+          notifySelectionFailure("Failed to save cloud model preset", err);
+        }
+        setModelSaving(false);
+      })();
+    },
+    [
+      currentActionPlannerModel,
+      currentResponseHandlerModel,
+      notifySelectionFailure,
+      resolvePresetSelection,
+      setTimeout,
+    ],
+  );
+
   /* ── Render ───────────────────────────────────────────────────── */
   return (
     <div className="space-y-5">
@@ -730,36 +886,74 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               </div>
             </div>
           ) : modelOptions && modelOptions.large.length > 0 ? (
-            <div className="border-t border-border/40 pt-4">
-              <label
-                htmlFor="provider-switcher-primary-model"
-                className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-muted"
-              >
-                {t("providerswitcher.model", { defaultValue: "Model" })}
-              </label>
-              <Select
-                value={currentLargeModel || ""}
-                onValueChange={(v) => handleModelFieldChange("large", v)}
-              >
-                <SelectTrigger
-                  id="provider-switcher-primary-model"
-                  className="h-9 w-full max-w-sm rounded-lg border border-border bg-card text-sm"
-                >
-                  <SelectValue
-                    placeholder={t("providerswitcher.chooseModel", {
-                      defaultValue: "Choose a model",
-                    })}
-                  />
-                </SelectTrigger>
-                <SelectContent className="max-h-64">
-                  {modelOptions.large.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <div className="mt-2 flex items-center justify-between gap-2">
+            <div className="border-t border-border/40 pt-4 space-y-3">
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    {
+                      key: "economy",
+                      label: t("providerswitcher.tierEconomy", {
+                        defaultValue: "Economy",
+                      }),
+                      hint: t("providerswitcher.tierEconomyHint", {
+                        defaultValue: "Cheapest models, fastest responses",
+                      }),
+                    },
+                    {
+                      key: "balanced",
+                      label: t("providerswitcher.tierBalanced", {
+                        defaultValue: "Balanced",
+                      }),
+                      hint: t("providerswitcher.tierBalancedHint", {
+                        defaultValue: "Good quality, sensible cost",
+                      }),
+                    },
+                    {
+                      key: "professional",
+                      label: t("providerswitcher.tierProfessional", {
+                        defaultValue: "Professional",
+                      }),
+                      hint: t("providerswitcher.tierProfessionalHint", {
+                        defaultValue: "Top-tier models for hard tasks",
+                      }),
+                    },
+                  ] as const
+                ).map((tier) => {
+                  const isActive = activePreset === tier.key;
+                  return (
+                    <button
+                      key={tier.key}
+                      type="button"
+                      onClick={() => applyModelPreset(tier.key)}
+                      disabled={modelSaving}
+                      aria-pressed={isActive}
+                      className={`group flex flex-col items-start gap-1 rounded-xl border px-3 py-3 text-left transition-all disabled:cursor-wait ${
+                        isActive
+                          ? "border-accent/45 bg-accent/12 shadow-[0_0_0_1px_rgba(var(--accent-rgb),0.18)]"
+                          : "border-border/50 bg-card/70 hover:border-border hover:bg-bg-hover"
+                      }`}
+                    >
+                      <span
+                        className={`text-sm font-semibold ${
+                          isActive ? "text-txt-strong" : "text-txt"
+                        }`}
+                      >
+                        {tier.label}
+                      </span>
+                      <span className="text-2xs leading-snug text-muted">
+                        {tier.hint}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs-tight text-muted">
+                {t("providerswitcher.advancedShowsModels", {
+                  defaultValue:
+                    "Advanced shows the underlying model for each tier.",
+                })}
+              </p>
+              <div className="flex items-center justify-between gap-2">
                 <p className="text-xs-tight text-muted">
                   {t("providerswitcher.restartRequiredHint")}
                 </p>
