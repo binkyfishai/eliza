@@ -31,7 +31,7 @@ export const codingAgentExamplesProvider: Provider = {
       (typeof message.content === "string"
         ? message.content
         : message.content?.text) ?? "";
-    const ptyService = runtime.getService("PTY_SERVICE") as unknown as
+    const ptyService = (await runtime.waitForService("PTY_SERVICE")) as unknown as
       | PTYService
       | undefined;
     const frameworkState = await getTaskAgentFrameworkState(

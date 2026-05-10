@@ -48,9 +48,9 @@ export const guildInfoProvider: Provider = {
 			};
 		}
 
-		const discordService = runtime.getService(
+		const discordService = (await runtime.waitForService(
 			ServiceType.DISCORD,
-		) as DiscordService;
+		)) as DiscordService;
 		if (!discordService?.client) {
 			runtime.logger.warn(
 				{
@@ -102,7 +102,12 @@ export const guildInfoProvider: Provider = {
 		}
 
 		// Fetch guild info
-		const guildInfo = await getGuildInfo(guild, discordService);
+		const guildInfo = await getGuildInfo(
+			guild,
+			discordService,
+			channelId,
+			runtime,
+		);
 
 		const responseText = formatGuildInfoText(guild, guildInfo);
 
@@ -118,6 +123,9 @@ export const guildInfoProvider: Provider = {
 				guildName: guild.name,
 				memberCount: guildInfo.memberCount,
 				channelCount: guildInfo.channelCount,
+				visibleMemberNames: guildInfo.visibleMembers
+					.map((member) => member.displayName)
+					.join(", "),
 			},
 			text: responseText,
 		};
@@ -141,6 +149,13 @@ interface GuildInfo {
 		categories: Array<{ id: string; name: string }>;
 	};
 	roles: Array<{ id: string; name: string; color: string }>;
+	visibleMembers: Array<{
+		id: string;
+		username: string;
+		displayName: string;
+	}>;
+	visibleMemberCount: number;
+	visibleMemberContextLimited: boolean;
 	botPermissions: {
 		administrator: boolean;
 		manageMessages: boolean;
@@ -152,6 +167,8 @@ interface GuildInfo {
 async function getGuildInfo(
 	guild: Guild,
 	discordService: DiscordService,
+	channelId: string,
+	runtime: IAgentRuntime,
 ): Promise<GuildInfo> {
 	// Get owner
 	let ownerName = "Unknown";
@@ -201,6 +218,8 @@ async function getGuildInfo(
 			name: role.name,
 			color: role.hexColor,
 		}));
+	const { members: visibleMembers, limited: visibleMemberContextLimited } =
+		await getVisibleChannelMembers(guild, discordService, channelId, runtime);
 
 	return {
 		name: guild.name,
@@ -219,8 +238,71 @@ async function getGuildInfo(
 			categories,
 		},
 		roles: Array.from(roles),
+		visibleMembers,
+		visibleMemberCount: visibleMembers.length,
+		visibleMemberContextLimited,
 		botPermissions,
 	};
+}
+
+function resolveVisibleMemberLimit(runtime: IAgentRuntime): number {
+	const raw = runtime.getSetting("DISCORD_MEMBER_CONTEXT_LIMIT");
+	if (typeof raw !== "string" || raw.trim().length === 0) {
+		return 40;
+	}
+	const parsed = Number.parseInt(raw, 10);
+	return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 100) : 40;
+}
+
+function resolveFullFetchLimit(runtime: IAgentRuntime): number {
+	const raw = runtime.getSetting("DISCORD_MEMBER_CONTEXT_FETCH_LIMIT");
+	if (typeof raw !== "string" || raw.trim().length === 0) {
+		return 500;
+	}
+	const parsed = Number.parseInt(raw, 10);
+	return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 1000) : 500;
+}
+
+async function getVisibleChannelMembers(
+	guild: Guild,
+	discordService: DiscordService,
+	channelId: string,
+	runtime: IAgentRuntime,
+): Promise<{
+	members: Array<{ id: string; username: string; displayName: string }>;
+	limited: boolean;
+}> {
+	const displayLimit = resolveVisibleMemberLimit(runtime);
+	const fullFetchLimit = resolveFullFetchLimit(runtime);
+	const useCache = guild.memberCount > fullFetchLimit;
+
+	try {
+		const members = await discordService.getTextChannelMembers(channelId, useCache);
+		const botId = discordService.client?.user?.id;
+		const visibleMembers = members
+			.filter((member) => member.id !== botId)
+			.sort((a, b) =>
+				a.displayName.localeCompare(b.displayName, undefined, {
+					sensitivity: "base",
+				}),
+			);
+		return {
+			members: visibleMembers.slice(0, displayLimit),
+			limited: visibleMembers.length > displayLimit || useCache,
+		};
+	} catch (error) {
+		runtime.logger.debug(
+			{
+				src: "plugin:discord:provider:guildInfo",
+				agentId: runtime.agentId,
+				guildId: guild.id,
+				channelId,
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Failed to resolve visible channel members",
+		);
+		return { members: [], limited: true };
+	}
 }
 
 function formatGuildInfoText(guild: Guild, info: GuildInfo): string {
@@ -236,6 +318,19 @@ function formatGuildInfoText(guild: Guild, info: GuildInfo): string {
 	lines.push(
 		`The server has ${info.channels.text.length} text channels, ${info.channels.voice.length} voice channels, and ${info.roleCount} roles.`,
 	);
+
+	if (info.visibleMembers.length > 0) {
+		const memberNames = info.visibleMembers
+			.map((member) => member.displayName)
+			.join(", ");
+		lines.push(
+			`Visible non-bot members in this channel: ${memberNames}${info.visibleMemberContextLimited ? " (partial list)" : ""}.`,
+		);
+	} else if (info.memberCount > 0) {
+		lines.push(
+			"Member roster was not available to the bot for this channel; the Discord Server Members intent or member cache may be missing.",
+		);
+	}
 
 	if (info.premiumTier > 0) {
 		lines.push(

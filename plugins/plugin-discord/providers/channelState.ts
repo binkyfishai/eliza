@@ -132,9 +132,9 @@ export const channelStateProvider: Provider = {
 				};
 			}
 
-			const discordService = runtime.getService(
+			const discordService = (await runtime.waitForService(
 				ServiceType.DISCORD,
-			) as DiscordService;
+			)) as DiscordService;
 			if (!discordService) {
 				runtime.logger.warn(
 					{

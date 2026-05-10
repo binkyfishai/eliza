@@ -145,9 +145,7 @@ type AutonomyServiceLike = Service & {
 async function isAutonomyServiceAvailable(
   runtime: IAgentRuntime,
 ): Promise<boolean> {
-  const svc =
-    runtime.getService<AutonomyServiceLike>("AUTONOMY") ??
-    runtime.getService<AutonomyServiceLike>("autonomy");
+  const svc = await runtime.waitForService<AutonomyServiceLike>("AUTONOMY", 5_000);
   return svc != null;
 }
 
@@ -171,16 +169,9 @@ async function dispatchInstruction(
   // compatibility repair. Worst case: adds ~5s latency to a trigger
   // dispatch that would have failed anyway. The retry is bounded and
   // does not block the event loop (uses setTimeout).
-  let autonomyService: AutonomyServiceLike | null = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    autonomyService =
-      runtime.getService<AutonomyServiceLike>("AUTONOMY") ??
-      runtime.getService<AutonomyServiceLike>("autonomy");
-    if (autonomyService) break;
-    if (attempt < 4) {
-      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
-    }
-  }
+  const autonomyService = await runtime.waitForService<AutonomyServiceLike>(
+    "AUTONOMY",
+  );
 
   if (!autonomyService) {
     runtime.logger.warn?.(
@@ -253,9 +244,9 @@ async function dispatchWorkflow(
   if (!trigger.workflowId) {
     return { ok: false, error: "workflow trigger missing workflowId" };
   }
-  const svc = runtime.getService<Service & N8nDispatchServiceLike>(
+  const svc = (await runtime.waitForService<Service & N8nDispatchServiceLike>(
     "N8N_DISPATCH",
-  ) as (Service & N8nDispatchServiceLike) | null;
+  )) as (Service & N8nDispatchServiceLike) | null;
   if (!svc) {
     runtime.logger.warn?.(
       {

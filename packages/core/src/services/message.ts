@@ -302,6 +302,27 @@ export function extractStandaloneActionParams(
 	return fragments.join("\n");
 }
 
+const TASK_AGENT_PRIORITY_ACTION_IDENTIFIERS = new Set(
+	[
+		"CREATE_TASK",
+		"START_CODING_TASK",
+		"CODE_TASK",
+		"SPAWN_AGENT",
+		"SPAWN_CODING_AGENT",
+		"DEPLOY_PROJECT",
+		"RUN_IN_TERMINAL",
+	].map(normalizeActionIdentifier),
+);
+
+function shouldBackfillPlannerParams(
+	parsedXml: Record<string, unknown>,
+): boolean {
+	return (
+		typeof parsedXml.params !== "string" ||
+		parsedXml.params.trim().length === 0
+	);
+}
+
 export function extractPlannerActionNames(
 	parsedXml: Record<string, unknown>,
 ): string[] {
@@ -336,7 +357,7 @@ export function extractPlannerActionNames(
 								`<${entry.name.toUpperCase()}>${entry.paramsXml}</${entry.name.toUpperCase()}>`,
 						)
 						.join("\n");
-					if (inlineParamsXml && parsedXml.params === "") {
+					if (inlineParamsXml && shouldBackfillPlannerParams(parsedXml)) {
 						parsedXml.params = inlineParamsXml;
 					}
 
@@ -349,7 +370,7 @@ export function extractPlannerActionNames(
 				.map((action) => unwrapPlannerIdentifier(String(action)))
 				.filter((action) => action.length > 0);
 
-			if (parsedXml.params === "") {
+			if (shouldBackfillPlannerParams(parsedXml)) {
 				const assembled = extractStandaloneActionParams(
 					commaSplitActions,
 					parsedXml,
@@ -370,16 +391,21 @@ export function extractPlannerActionNames(
 	})();
 }
 
-function normalizePlannerActions(
+export function normalizePlannerActions(
 	parsedXml: Record<string, unknown>,
 	runtime: IAgentRuntime,
 ): string[] {
 	const normalizedActions = extractPlannerActionNames(parsedXml);
 
-	const finalActions =
-		!runtime.isActionPlanningEnabled() && normalizedActions.length > 1
-			? [normalizedActions[0]]
-			: normalizedActions;
+	let finalActions = normalizedActions;
+	if (!runtime.isActionPlanningEnabled() && normalizedActions.length > 1) {
+		const priorityAction = normalizedActions.find((actionName) =>
+			TASK_AGENT_PRIORITY_ACTION_IDENTIFIERS.has(
+				normalizeActionIdentifier(actionName),
+			),
+		);
+		finalActions = [priorityAction ?? normalizedActions[0]];
+	}
 
 	const actionLookup = buildRuntimeActionLookup(runtime);
 	const validActions = finalActions.flatMap((actionName) => {

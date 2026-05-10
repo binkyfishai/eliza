@@ -8,7 +8,7 @@ export const provider: Provider = {
 
   dynamic: true,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State): Promise<ProviderResult> => {
-    const mcpService = runtime.getService<McpService>(MCP_SERVICE_NAME);
+    const mcpService = await runtime.waitForService<McpService>(MCP_SERVICE_NAME);
     if (!mcpService) {
       return {
         values: {},

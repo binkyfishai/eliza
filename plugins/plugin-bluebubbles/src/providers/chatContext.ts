@@ -74,7 +74,7 @@ export const chatContextProvider: Provider = {
 			return { text: "" };
 		}
 
-		const bbService = runtime.getService<BlueBubblesService>(
+		const bbService = await runtime.waitForService<BlueBubblesService>(
 			BLUEBUBBLES_SERVICE_NAME,
 		);
 

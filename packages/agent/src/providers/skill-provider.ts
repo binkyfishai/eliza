@@ -329,9 +329,9 @@ export function createDynamicSkillProvider(): Provider {
         return { text: "", values: {}, data: {} };
       }
 
-      const service = runtime.getService(
+      const service = (await runtime.waitForService(
         "AGENT_SKILLS_SERVICE",
-      ) as unknown as AgentSkillsServiceLike | null;
+      )) as unknown as AgentSkillsServiceLike | null;
       if (!service) return { text: "" };
 
       const skills = service.getLoadedSkills();

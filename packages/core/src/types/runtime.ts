@@ -118,6 +118,19 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		serviceType: ServiceTypeName | string,
 	): Promise<Service>;
 
+	/**
+	 * Async service getter that awaits service availability instead of returning
+	 * null when the service hasn't started yet.  Returns null (with a logged
+	 * warning) only when the service genuinely fails to appear within the timeout.
+	 *
+	 * Providers and actions should prefer this over `getService()` when they
+	 * depend on a service that may not have finished initializing yet.
+	 */
+	waitForService<T extends Service>(
+		serviceType: ServiceTypeName | string,
+		timeoutMs?: number,
+	): Promise<T | null>;
+
 	getRegisteredServiceTypes(): ServiceTypeName[];
 
 	hasService(serviceType: ServiceTypeName | string): boolean;

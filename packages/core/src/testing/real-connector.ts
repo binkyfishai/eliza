@@ -135,33 +135,28 @@ export async function waitForDiscordMessage(
 	timeoutMs = 30_000,
 	fromBotOnly = true,
 ): Promise<string | null> {
+	type DiscordMessage = {
+		channelId: string;
+		content: string;
+		author: { bot: boolean };
+	};
 	const c = client as {
-		on: (
-			event: string,
-			handler: (msg: {
-				channelId: string;
-				content: string;
-				author: { bot: boolean };
-			}) => void,
-		) => void;
-		off: (event: string, handler: (...args: unknown[]) => void) => void;
+		on: (event: string, handler: (msg: DiscordMessage) => void) => void;
+		off: (event: string, handler: (msg: DiscordMessage) => void) => void;
 	};
 
 	return new Promise((resolve) => {
-		const handler = (msg: {
-			channelId: string;
-			content: string;
-			author: { bot: boolean };
-		}) => {
+		let timeout: ReturnType<typeof setTimeout>;
+		const handler = (msg: DiscordMessage) => {
 			if (msg.channelId !== channelId) return;
 			if (fromBotOnly && !msg.author.bot) return;
 			clearTimeout(timeout);
-			c.off("messageCreate", handler as (...args: unknown[]) => void);
+			c.off("messageCreate", handler);
 			resolve(msg.content);
 		};
 
-		const timeout = setTimeout(() => {
-			c.off("messageCreate", handler as (...args: unknown[]) => void);
+		timeout = setTimeout(() => {
+			c.off("messageCreate", handler);
 			resolve(null);
 		}, timeoutMs);
 
@@ -245,7 +240,6 @@ export async function sendTestEmail(
 	}
 
 	try {
-		// @ts-expect-error - nodemailer is an optional peer dep for email tests
 		const nodemailer = await import("nodemailer");
 		const transport = nodemailer.createTransport({
 			host,

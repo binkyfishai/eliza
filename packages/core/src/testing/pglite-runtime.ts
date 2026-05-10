@@ -53,10 +53,14 @@ async function flushPendingTrajectoryWrites(
 	runtime: AgentRuntime,
 ): Promise<void> {
 	try {
-		const { flushTrajectoryWrites } = await import(
-			"../../../agent/src/runtime/trajectory-storage"
-		);
-		await flushTrajectoryWrites(runtime);
+		const trajectoryStorageModule =
+			"../../../agent/src/runtime/trajectory-storage";
+		const { flushTrajectoryWrites } = (await import(
+			trajectoryStorageModule
+		)) as {
+			flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>;
+		};
+		await flushTrajectoryWrites?.(runtime);
 	} catch {
 		// Best effort only. Some test runtimes do not register this helper.
 	}

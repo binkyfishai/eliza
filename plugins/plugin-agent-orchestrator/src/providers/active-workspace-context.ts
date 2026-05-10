@@ -66,12 +66,12 @@ export const activeWorkspaceContextProvider: Provider = {
   position: 1,
 
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
-    const ptyService = runtime.getService("PTY_SERVICE") as unknown as
+    const ptyService = (await runtime.waitForService("PTY_SERVICE")) as unknown as
       | PTYService
       | undefined;
-    const wsService = runtime.getService(
+    const wsService = (await runtime.waitForService(
       "CODING_WORKSPACE_SERVICE",
-    ) as unknown as CodingWorkspaceService | undefined;
+    )) as unknown as CodingWorkspaceService | undefined;
     const coordinator = getCoordinator(runtime);
     let frameworkState = FALLBACK_FRAMEWORK_STATE;
     try {

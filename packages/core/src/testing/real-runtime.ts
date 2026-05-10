@@ -22,7 +22,6 @@ import os from "node:os";
 import path from "node:path";
 import type { Plugin } from "@elizaos/core";
 import { AgentRuntime, createCharacter, logger } from "@elizaos/core";
-import { configureLocalEmbeddingPlugin } from "../../../agent/src/runtime/eliza";
 import {
 	type LiveProviderConfig,
 	type LiveProviderName,
@@ -76,14 +75,34 @@ type TrajectoryWriteService = {
 	writeQueues?: Map<string, Promise<void>>;
 };
 
+async function configureLocalEmbeddingPluginForTest(
+	plugin: Plugin,
+): Promise<void> {
+	try {
+		const agentRuntimeModule = "../../../agent/src/runtime/eliza";
+		const { configureLocalEmbeddingPlugin } = (await import(
+			agentRuntimeModule
+		)) as {
+			configureLocalEmbeddingPlugin?: (plugin: Plugin) => void;
+		};
+		configureLocalEmbeddingPlugin?.(plugin);
+	} catch (err) {
+		logger.debug(`[real-runtime] local embedding config skipped: ${err}`);
+	}
+}
+
 async function flushPendingTrajectoryWrites(
 	runtime: AgentRuntime,
 ): Promise<void> {
 	try {
-		const { flushTrajectoryWrites } = await import(
-			"../../../agent/src/runtime/trajectory-storage"
-		);
-		await flushTrajectoryWrites(runtime);
+		const trajectoryStorageModule =
+			"../../../agent/src/runtime/trajectory-storage";
+		const { flushTrajectoryWrites } = (await import(
+			trajectoryStorageModule
+		)) as {
+			flushTrajectoryWrites?: (runtime: AgentRuntime) => Promise<void>;
+		};
+		await flushTrajectoryWrites?.(runtime);
 	} catch {
 		// Best effort only. Some test runtimes do not register this helper.
 	}
@@ -156,7 +175,7 @@ export async function createRealTestRuntime(
 			};
 			const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
 			if (plugin) {
-				configureLocalEmbeddingPlugin(plugin);
+				await configureLocalEmbeddingPluginForTest(plugin);
 				await runtime.registerPlugin(plugin);
 				logger.info(
 					"[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",

@@ -3,6 +3,7 @@ import {
 	extractPlannerActionNames,
 	extractPlannerProviderNames,
 	getActionContinuationDecision,
+	normalizePlannerActions,
 	resolvePlannerActionName,
 	shouldEmitPlannerPreamble,
 	withActionResultsForPrompt,
@@ -38,6 +39,34 @@ describe("extractPlannerActionNames", () => {
 				actions: ["<action>CALENDAR_ACTION</action>", '"REQUEST_FIELD_FILL"'],
 			}),
 		).toEqual(["CALENDAR_ACTION", "REQUEST_FIELD_FILL"]);
+	});
+});
+
+describe("normalizePlannerActions", () => {
+	it("prefers CREATE_TASK over REPLY when action planning is disabled", () => {
+		const parsedXml: Record<string, unknown> = {
+			actions: `<action>
+  <name>REPLY</name>
+  <params><text>Started: scaffolding a new project with a subagent now.</text></params>
+</action>
+<action>
+  <name>CREATE_TASK</name>
+  <params><task>Scaffold a new starter project in a fresh workspace.</task><label>scaffold-project</label></params>
+</action>`,
+		};
+		const runtime = {
+			actions: [buildAction("REPLY"), buildAction("CREATE_TASK")],
+			isActionPlanningEnabled: () => false,
+			logger: {
+				info: vi.fn(),
+				warn: vi.fn(),
+			},
+		} as Parameters<typeof normalizePlannerActions>[1];
+
+		const result = normalizePlannerActions(parsedXml, runtime);
+
+		expect(result).toEqual(["CREATE_TASK"]);
+		expect(String(parsedXml.params)).toContain("<CREATE_TASK>");
 	});
 });
 

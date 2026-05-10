@@ -30,6 +30,7 @@ interface RelayServiceLike {
 export interface CloudRelayRouteState {
   runtime?: {
     getService(type: string): unknown;
+    waitForService(type: string, timeoutMs?: number): Promise<unknown>;
   };
 }
 
@@ -54,12 +55,11 @@ export async function handleCloudRelayRoute(
     return true;
   }
 
-  // Try known service names used across package boundaries.
-  const service = (state.runtime.getService("CLOUD_MANAGED_GATEWAY_RELAY") ??
-    state.runtime.getService("cloud-managed-gateway-relay") ??
-    state.runtime.getService(
-      "cloudManagedGatewayRelay",
-    )) as RelayServiceLike | null;
+  // Await the service — the triple-name fallback is no longer needed since
+  // waitForService uses the same alias resolution as registerService.
+  const service = (await state.runtime.waitForService(
+    "CLOUD_MANAGED_GATEWAY_RELAY",
+  )) as RelayServiceLike | null;
 
   if (!service || typeof service.getSessionInfo !== "function") {
     helpers.json(res, {

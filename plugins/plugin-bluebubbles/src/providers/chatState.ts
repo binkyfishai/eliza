@@ -57,7 +57,7 @@ export const chatStateProvider: Provider = {
 			return { text: "" };
 		}
 
-		const service = runtime.getService<BlueBubblesService>(
+		const service = await runtime.waitForService<BlueBubblesService>(
 			BLUEBUBBLES_SERVICE_NAME,
 		);
 

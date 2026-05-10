@@ -217,6 +217,56 @@ const TOON_FIELD_PATTERN =
 const XML_LIKE_PATTERN = /<[/!?A-Za-z_][^>\n]*>/;
 const JSON_OBJECT_KEY_PATTERN =
 	/(?:["'][^"'\n]+["']|[A-Za-z_][A-Za-z0-9_-]*)\s*:/;
+const TASK_AGENT_CREATE_TASK_PARAM_NAMES = new Set([
+	"task",
+	"repo",
+	"workdir",
+	"agenttype",
+	"approvalpreset",
+	"agents",
+	"label",
+]);
+
+function isTaskAgentCreateTaskAction(action: Action): boolean {
+	const similes = Array.isArray(action.similes) ? action.similes : [];
+	if (
+		similes.some((simile) =>
+			[
+				"START_CODING_TASK",
+				"CODE_TASK",
+				"START_AGENT_TASK",
+				"LAUNCH_TASK",
+				"CREATE_SUBTASK",
+			].includes((simile ?? "").trim().toUpperCase()),
+		)
+	) {
+		return true;
+	}
+
+	if (
+		/\b(background task agents?|asynchronous task agents?|open-ended multi-step job|continue in the background|workspace automatically)\b/i.test(
+			action.description ?? "",
+		)
+	) {
+		return true;
+	}
+
+	const parameters = Array.isArray(action.parameters) ? action.parameters : [];
+	return parameters.some((parameter) =>
+		TASK_AGENT_CREATE_TASK_PARAM_NAMES.has(
+			(parameter?.name ?? "").trim().toLowerCase(),
+		),
+	);
+}
+
+function shouldPreferTaskAgentCreateTask(
+	parameters?: Record<string, unknown>,
+): boolean {
+	if (!parameters || typeof parameters !== "object") return false;
+	return Object.keys(parameters).some((key) =>
+		TASK_AGENT_CREATE_TASK_PARAM_NAMES.has(key.trim().toLowerCase()),
+	);
+}
 
 /**
  * Thrown by `AgentRuntime.useModel` when a text-generation model is requested
@@ -2746,9 +2796,27 @@ export class AgentRuntime implements IAgentRuntime {
 					"Processing action",
 				);
 				const normalizedResponseAction = normalizeAction(responseAction);
+				const responseActionKey = responseAction.trim().toUpperCase();
+				const createTaskParams =
+					normalizedResponseAction === "createtask"
+						? (actionParamsByName.get(responseActionKey) ??
+							actionParamsByName.get("CREATE_TASK"))
+						: undefined;
 
 				// First try exact match
-				let action = actionByName.get(normalizedResponseAction);
+				let action =
+					normalizedResponseAction === "createtask" &&
+					shouldPreferTaskAgentCreateTask(createTaskParams)
+						? normalizedActions.find(
+								(entry) =>
+									entry.normalizedName === normalizedResponseAction &&
+									isTaskAgentCreateTaskAction(entry.action),
+							)?.action
+						: actionByName.get(normalizedResponseAction);
+
+				if (!action) {
+					action = actionByName.get(normalizedResponseAction);
+				}
 
 				if (!action) {
 					// Then try fuzzy matching
@@ -2862,7 +2930,6 @@ export class AgentRuntime implements IAgentRuntime {
 				// Validate and attach action parameters (optional)
 				const options: HandlerOptions = {};
 				if (action.parameters && action.parameters.length > 0) {
-					const responseActionKey = responseAction.trim().toUpperCase();
 					const actionKey = action.name.trim().toUpperCase();
 					const extractedParams =
 						actionParamsByName.get(responseActionKey) ??
@@ -4412,6 +4479,74 @@ export class AgentRuntime implements IAgentRuntime {
 				);
 			return s;
 		});
+	}
+
+	/**
+	 * Async service getter that awaits service availability instead of returning
+	 * null when the service hasn't started yet.
+	 *
+	 * Unlike `getService()` (sync, returns null if not ready) this method:
+	 * 1. Returns immediately if the service is already running.
+	 * 2. Triggers a lazy start if the service class is registered but not started.
+	 * 3. Waits for the service to be registered and started if its plugin hasn't
+	 *    loaded yet, up to `timeoutMs`.
+	 *
+	 * Returns null (with a logged warning) only when the service genuinely fails
+	 * to appear within the timeout — never silently.
+	 */
+	async waitForService<T extends Service = Service>(
+		serviceType: ServiceTypeName | string,
+		timeoutMs = 10_000,
+	): Promise<T | null> {
+		// Fast path: already running
+		const existing = this.getService<T>(serviceType);
+		if (existing) return existing;
+
+		const key = this.resolveServiceTypeAlias(serviceType) as ServiceTypeName;
+
+		// Medium path: class registered but not started yet — trigger start
+		const started = await this._ensureServiceStarted(key);
+		if (started) return started as T;
+
+		// Slow path: service class not registered yet — its plugin may still
+		// be loading. Await the service promise (created on registration) or
+		// create one so the eventual registration resolves it.
+		if (!this.servicePromises.has(serviceType)) {
+			this._createServiceResolver(serviceType);
+		}
+		const promise = this.servicePromises.get(serviceType);
+		if (!promise) return null; // shouldn't happen, but guard
+
+		try {
+			const service = await Promise.race([
+				promise,
+				new Promise<never>((_, reject) =>
+					setTimeout(
+						() =>
+							reject(
+								new Error(
+									`waitForService("${String(serviceType)}") timed out after ${timeoutMs}ms` +
+										` (status: ${this.getServiceRegistrationStatus(serviceType)})`,
+								),
+							),
+						timeoutMs,
+					),
+				),
+			]);
+			return service as T;
+		} catch (error) {
+			this.logger.warn(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					serviceType: String(serviceType),
+					status: this.getServiceRegistrationStatus(serviceType),
+					error: error instanceof Error ? error.message : String(error),
+				},
+				"waitForService: service did not become available",
+			);
+			return null;
+		}
 	}
 
 	registerModel(

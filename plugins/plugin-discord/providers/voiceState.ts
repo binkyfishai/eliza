@@ -69,9 +69,9 @@ export const voiceStateProvider: Provider = {
 		}
 
 		// Look up guild via channel to get the Discord guild ID for voice connection
-		const discordService = runtime.getService(
+		const discordService = (await runtime.waitForService(
 			ServiceType.DISCORD,
-		) as DiscordService;
+		)) as DiscordService;
 		if (!discordService?.client) {
 			runtime.logger.warn(
 				{ src: "plugin:discord:provider:voiceState" },

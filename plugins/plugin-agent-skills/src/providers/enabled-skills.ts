@@ -39,7 +39,7 @@ export const enabledSkillsProvider: Provider = {
 		_message: Memory,
 		_state: State,
 	): Promise<ProviderResult> => {
-		const service = runtime.getService<AgentSkillsService>(
+		const service = await runtime.waitForService<AgentSkillsService>(
 			"AGENT_SKILLS_SERVICE",
 		);
 		if (!service) return { text: "" };

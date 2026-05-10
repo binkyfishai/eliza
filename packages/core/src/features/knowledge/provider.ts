@@ -9,10 +9,17 @@ export const knowledgeProvider: Provider = {
 		"Knowledge from the knowledge base that the agent knows, retrieved whenever the agent needs to answer a question about their expertise.",
 	dynamic: true,
 	get: async (runtime: IAgentRuntime, message: Memory) => {
-		const knowledgeService = runtime.getService(
+		const knowledgeService = await runtime.waitForService<KnowledgeService>(
 			"knowledge",
-		) as KnowledgeService;
-		const knowledgeData = await knowledgeService?.getKnowledge(message);
+		);
+		if (!knowledgeService) {
+			return {
+				text: "",
+				values: { knowledge: "", knowledgeUsed: false },
+				data: { knowledge: "", ragMetadata: null, knowledgeUsed: false },
+			};
+		}
+		const knowledgeData = await knowledgeService.getKnowledge(message);
 
 		// Early return when no knowledge exists - provider will be skipped in context
 		// (runtime filters providers with empty/whitespace text)

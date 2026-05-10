@@ -654,8 +654,42 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 		}
 	}
 
+	const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
+
 	if (!xmlContent) {
-		const safeText = text.length > 100_000 ? text.slice(0, 100_000) : text;
+		// Try any container tag (not just <response>) that wraps known child elements.
+		// Some models output <those>, <output>, etc. instead of <response>.
+		const containerMatch = safeText.match(/<([A-Za-z_][A-Za-z0-9_-]*)>/);
+		if (containerMatch) {
+			const containerTag = containerMatch[1];
+			if (containerTag !== "response") {
+				const cStart =
+					safeText.indexOf(`<${containerTag}>`) + containerTag.length + 2;
+				const cEnd = safeText.indexOf(`</${containerTag}>`, cStart);
+				if (cEnd !== -1) {
+					const candidateContent = safeText.slice(cStart, cEnd);
+					// Only use if it contains known child XML elements
+					if (/<(?:thought|text|actions|simple)\b/.test(candidateContent)) {
+						xmlContent = candidateContent;
+					}
+				}
+			}
+		}
+	}
+
+	if (!xmlContent) {
+		// Try extracting fields directly from flat XML (no container).
+		// Some models output <thought>...</thought><text>...</text> without a wrapper.
+		const knownFields = ["thought", "text", "actions", "simple", "providers"];
+		const hasMultipleFields = knownFields.filter(
+			(f) => safeText.includes(`<${f}>`) && safeText.includes(`</${f}>`),
+		).length >= 2;
+		if (hasMultipleFields) {
+			xmlContent = safeText;
+		}
+	}
+
+	if (!xmlContent) {
 		const looksLikeXml = /<[/!?A-Za-z_][^>\n]*>/.test(safeText);
 		if (!looksLikeXml) {
 			return null;
@@ -744,7 +778,7 @@ export function parseKeyValueXml<T = Record<string, unknown>>(
 			return null;
 		};
 
-		const fb = findFirstXmlBlock(text);
+		const fb = findFirstXmlBlock(safeText);
 		if (!fb) {
 			logger.warn({ src: "core:utils" }, "Could not find XML block in text");
 			return null;

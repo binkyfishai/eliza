@@ -338,11 +338,12 @@ const _nodeRequire = createRequire(import.meta.url);
 // Dynamic import (not require) because the plugin is ESM-only and bun's
 // createRequire cannot load ESM packages. Top-level await is settled before
 // any consumer reads the binding.
-let agentOrchestratorCompat: unknown = null;
-try {
-  agentOrchestratorCompat = await import("@elizaos/plugin-agent-orchestrator");
-} catch {
-  agentOrchestratorCompat = null;
+let agentOrchestratorCompatPromise: Promise<unknown | null> | null = null;
+function getAgentOrchestratorCompat(): Promise<unknown | null> {
+  agentOrchestratorCompatPromise ??= import(
+    "@elizaos/plugin-agent-orchestrator"
+  ).catch(() => null);
+  return agentOrchestratorCompatPromise;
 }
 
 // Re-export for downstream consumers (e.g. @elizaos/app-core)
@@ -2095,6 +2096,15 @@ async function handleRequest(
                 (
                   state.runtime as { getService: (t: string) => unknown }
                 ).getService(type),
+              waitForService: (type: string, timeoutMs?: number) =>
+                (
+                  state.runtime as {
+                    waitForService: (
+                      t: string,
+                      ms?: number,
+                    ) => Promise<unknown>;
+                  }
+                ).waitForService(type, timeoutMs),
             }
           : undefined,
       },
@@ -2521,34 +2531,12 @@ async function handleRequest(
     const isAgentListRoute =
       method === "GET" && pathname === "/api/coding-agents";
 
-    // The settings UI and startup hydration poll these routes early. When the
-    // PTY/coordinator services are not ready yet, surface explicit 503
-    // unavailability rather than synthesizing success-shaped empty payloads.
-    if (
-      (isCoordinatorStatusRoute && !coordinator) ||
-      (isPreflightRoute && !ptyService) ||
-      ((isTaskRoute ||
-        isTaskDetailRoute ||
-        isScratchRoute ||
-        isAgentListRoute) &&
-        !codeTaskService) ||
-      ((isSessionsRoute || isSessionDetailRoute) && !ptyService)
-    ) {
-      handled = await handleCodingAgentsFallback(
-        state.runtime,
-        pathname,
-        method,
-        req,
-        res,
-      );
-    }
-
     // Prefer @elizaos/plugin-agent-orchestrator route handler so the full coordinator
     // contract is served from the embedded runtime (replaces the old plugin).
     if (!handled)
       try {
         const orchestratorPlugin =
-          agentOrchestratorCompat as OrchestratorPluginFallbackModule | null;
+          (await getAgentOrchestratorCompat()) as OrchestratorPluginFallbackModule | null;
         if (orchestratorPlugin?.createCodingAgentRouteHandler) {
           const coordinator = orchestratorPlugin.getCoordinator?.(
             state.runtime,
@@ -2567,6 +2555,32 @@ async function handleRequest(
       } catch {
         // Compat layer unavailable — final fallback below handles coding-agents routes.
       }
+
+    // The settings UI and startup hydration poll these routes early. When the
+    // PTY/coordinator services are not ready yet, surface explicit 503
+    // unavailability rather than synthesizing success-shaped empty payloads.
+    // This fallback must run after the agent-orchestrator route above; otherwise
+    // the legacy codeTaskService check masks the active orchestrator API and
+    // /api/coding-agents reports unavailable while task agents are actually live.
+    if (
+      !handled &&
+      ((isCoordinatorStatusRoute && !coordinator) ||
+        (isPreflightRoute && !ptyService) ||
+        ((isTaskRoute ||
+          isTaskDetailRoute ||
+          isScratchRoute ||
+          isAgentListRoute) &&
+          !codeTaskService) ||
+        ((isSessionsRoute || isSessionDetailRoute) && !ptyService))
+    ) {
+      handled = await handleCodingAgentsFallback(
+        state.runtime,
+        pathname,
+        method,
+        req,
+        res,
+      );
+    }
 
     // Final fallback: handle coding-agents routes using the plugin's CODE_TASK compatibility service.
     if (!handled && pathname.startsWith("/api/coding-agents")) {
