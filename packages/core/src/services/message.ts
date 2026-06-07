@@ -1458,7 +1458,8 @@ interface StrategyResult {
 type FailureReplyAttempt =
 	| { kind: "text"; value: string }
 	| { kind: "noProvider" }
-	| { kind: "rateLimited" };
+	| { kind: "rateLimited" }
+	| { kind: "paymentRequired" };
 
 /**
  * Detect provider rate-limit / 429 failures so the user-facing failure reply
@@ -1475,6 +1476,16 @@ export function isRateLimitError(error: unknown): boolean {
 		haystack.includes("rate_limit") ||
 		haystack.includes("ratelimit") ||
 		/\b429\b/.test(haystack)
+	);
+}
+
+export function isPaymentRequiredError(error: unknown): boolean {
+	if (!(error instanceof Error)) return false;
+	const haystack = `${error.name} ${error.message}`.toLowerCase();
+	return (
+		haystack.includes("payment required") ||
+		haystack.includes("no payment method") ||
+		/\b402\b/.test(haystack)
 	);
 }
 
@@ -2927,21 +2938,46 @@ async function generateDirectReplyModel(args: {
 	state: State;
 	messageHandler: MessageHandlerResult;
 	signal?: AbortSignal;
+	retryWithLargeOnEmpty?: boolean;
 }): Promise<{
 	text: string;
 	raw: string | GenerateTextResult;
 	prompt: string;
 }> {
 	const prompt = directReplyPromptForMessage(args);
-	const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
+	const exactReply = extractExactWordsReply(getUserMessageText(args.message));
+	if (exactReply) {
+		return {
+			text: exactReply,
+			raw: exactReply,
+			prompt,
+		};
+	}
+	const params = {
 		prompt,
 		maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
 		signal: args.signal,
 		providerOptions: { eliza: { thinking: "off" } },
-	})) as string | GenerateTextResult;
-	const modelText = stripReasoningBlocks(getV5ModelText(raw)).trim();
+	};
+	let raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, params)) as
+		| string
+		| GenerateTextResult;
+	let modelText = stripReasoningBlocks(getV5ModelText(raw)).trim();
+	if (!modelText && args.retryWithLargeOnEmpty && !args.signal?.aborted) {
+		args.runtime.logger?.warn?.(
+			{
+				src: "service:message",
+				model: ModelType.TEXT_SMALL,
+			},
+			"Direct reply fast path returned empty text; retrying with large text model",
+		);
+		raw = (await args.runtime.useModel(ModelType.TEXT_LARGE, params)) as
+			| string
+			| GenerateTextResult;
+		modelText = stripReasoningBlocks(getV5ModelText(raw)).trim();
+	}
 	return {
-		text: extractExactWordsReply(getUserMessageText(args.message)) ?? modelText,
+		text: modelText,
 		raw,
 		prompt,
 	};
@@ -5446,6 +5482,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				state: args.state,
 				messageHandler: fastMessageHandler,
 				signal: stage1TurnSignal,
+				retryWithLargeOnEmpty: true,
 			});
 			const fastEndedAt = Date.now();
 			fastMessageHandler.plan.reply = generated.text;
@@ -5467,15 +5504,21 @@ export async function runV5MessageRuntimeStage1(args: {
 					logger: args.runtime.logger,
 				});
 			}
-			return {
-				kind: "direct_reply",
-				messageHandler: fastMessageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					text: generated.text,
-					thought: fastMessageHandler.thought,
-				}),
-			};
+			if (generated.text) {
+				return {
+					kind: "direct_reply",
+					messageHandler: fastMessageHandler,
+					result: createV5ReplyStrategyResult({
+						...args,
+						text: generated.text,
+						thought: fastMessageHandler.thought,
+					}),
+				};
+			}
+			args.runtime.logger?.warn?.(
+				{ src: "service:message" },
+				"Direct reply fast path returned empty text; falling back to Stage 1",
+			);
 		}
 		const responseHandlerFieldContext: ResponseHandlerFieldContext = {
 			runtime: args.runtime,
@@ -5773,15 +5816,21 @@ export async function runV5MessageRuntimeStage1(args: {
 					logger: args.runtime.logger,
 				});
 			}
-			return {
-				kind: "direct_reply",
-				messageHandler: fallbackMessageHandler,
-				result: createV5ReplyStrategyResult({
-					...args,
-					text: generated.text,
-					thought: fallbackMessageHandler.thought,
-				}),
-			};
+			if (generated.text) {
+				return {
+					kind: "direct_reply",
+					messageHandler: fallbackMessageHandler,
+					result: createV5ReplyStrategyResult({
+						...args,
+						text: generated.text,
+						thought: fallbackMessageHandler.thought,
+					}),
+				};
+			}
+			args.runtime.logger?.warn?.(
+				{ src: "service:message" },
+				"Direct reply fallback returned empty text; falling back to planner",
+			);
 		}
 		if (
 			!messageHandler &&
@@ -11131,6 +11180,9 @@ export class DefaultMessageService implements IMessageService {
 				) {
 					return { kind: "noProvider" };
 				}
+				if (isPaymentRequiredError(error)) {
+					return { kind: "paymentRequired" };
+				}
 				// Track the most recent slot's cause. Reporting "rate-limited"
 				// only when the LAST attempted slot was a 429 avoids misleading
 				// the user in a mixed-failure run (one slot throttled, others
@@ -11200,7 +11252,10 @@ export class DefaultMessageService implements IMessageService {
 			);
 		}
 
-		let replyText = attempt.kind === "rateLimited" ? "" : attempt.value;
+		let replyText =
+			attempt.kind === "rateLimited" || attempt.kind === "paymentRequired"
+				? ""
+				: attempt.value;
 		if (!replyText) {
 			// Last-ditch fallback when every model call above also failed.
 			// Voice-neutral so any character can ship this default; characters
@@ -11211,6 +11266,10 @@ export class DefaultMessageService implements IMessageService {
 				replyText =
 					runtime.character.templates?.rateLimitedReply ||
 					"My model provider is rate-limiting me right now — give it a few seconds and try again.";
+			} else if (attempt.kind === "paymentRequired") {
+				replyText =
+					runtime.character.templates?.paymentRequiredReply ||
+					"My model provider needs a payment method before I can answer. Add billing or switch to a configured local/API model, then try again.";
 			} else {
 				replyText =
 					runtime.character.templates?.transientFailureReply ||

@@ -750,6 +750,39 @@ android smoke model works`,
 		}
 	});
 
+	it("falls through to Stage 1 when the fast direct reply path stays empty", async () => {
+		const runtime = makeRuntime([
+			"",
+			"",
+			stage1Response({
+				thought: "Stage 1 can answer after empty fast path.",
+				contexts: ["simple"],
+				replyText: "I can answer from the normal chat path.",
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "what is the memetic garden seeing right now?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.TEXT_SMALL);
+		expect(useModelCalls(runtime)[1]?.[0]).toBe(ModelType.TEXT_LARGE);
+		expect(useModelCalls(runtime)[2]?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I can answer from the normal chat path.",
+			);
+		}
+	});
+
 	it("records provider response text in fast direct reply trajectories", async () => {
 		const previousDir = process.env.ELIZA_TRAJECTORY_DIR;
 		const tempDir = await mkdtemp(join(tmpdir(), "eliza-stage1-trajectory-"));

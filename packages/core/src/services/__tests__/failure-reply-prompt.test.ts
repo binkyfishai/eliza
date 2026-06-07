@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildFailureReplyPrompt, isRateLimitError } from "../message";
+import {
+	buildFailureReplyPrompt,
+	isPaymentRequiredError,
+	isRateLimitError,
+} from "../message";
 
 /**
  * Pinned hard rules for the transient-failure reply prompt.
@@ -166,5 +170,26 @@ describe("isRateLimitError", () => {
 		expect(isRateLimitError(null)).toBe(false);
 		expect(isRateLimitError(undefined)).toBe(false);
 		expect(isRateLimitError({ message: "429" })).toBe(false);
+	});
+});
+
+describe("isPaymentRequiredError", () => {
+	it("matches provider billing failures from hosted model slots", () => {
+		expect(
+			isPaymentRequiredError(
+				new Error("provider error: payment required: no payment method available"),
+			),
+		).toBe(true);
+		expect(isPaymentRequiredError(new Error("402 Payment Required"))).toBe(
+			true,
+		);
+	});
+
+	it("does not match unrelated provider errors", () => {
+		expect(isPaymentRequiredError(new Error("Too Many Requests"))).toBe(false);
+		expect(isPaymentRequiredError(new Error("NoModelProviderConfiguredError"))).toBe(
+			false,
+		);
+		expect(isPaymentRequiredError(null)).toBe(false);
 	});
 });
