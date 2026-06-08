@@ -163,6 +163,19 @@ function parseStructuredStreamChunk(
 
 const DELETED_CONVERSATIONS_FILENAME = "deleted-conversations.v1.json";
 const MAX_DELETED_CONVERSATION_IDS = 5000;
+const DEFAULT_APP_CHAT_GENERATION_TIMEOUT_MS = 180_000;
+
+function resolveAppChatGenerationTimeoutMs(): number {
+  const raw = process.env.ELIZA_APP_CHAT_GENERATION_TIMEOUT_MS?.trim();
+  if (!raw) return DEFAULT_APP_CHAT_GENERATION_TIMEOUT_MS;
+
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return DEFAULT_APP_CHAT_GENERATION_TIMEOUT_MS;
+  }
+
+  return Math.max(5_000, parsed);
+}
 
 interface DeletedConversationsStateFile {
   version: 1;
@@ -1764,6 +1777,7 @@ export async function handleConversationRoutes(
           resolveNoResponseText: () =>
             resolveNoResponseFallback(state.logBuffer, runtime),
           preferredLanguage,
+          timeoutDuration: resolveAppChatGenerationTimeoutMs(),
         },
       );
 
@@ -2035,6 +2049,7 @@ export async function handleConversationRoutes(
           resolveNoResponseText: () =>
             resolveNoResponseFallback(state.logBuffer, runtime),
           preferredLanguage,
+          timeoutDuration: resolveAppChatGenerationTimeoutMs(),
         },
       );
 

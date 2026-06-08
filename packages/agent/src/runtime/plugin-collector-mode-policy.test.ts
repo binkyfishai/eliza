@@ -121,6 +121,61 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
   });
 
+  it("loads a direct Ollama provider from canonical service routing", () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "cloud-test";
+
+    const config: ElizaConfig = {
+      deploymentTarget: { runtime: "local" },
+      cloud: {
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "ollama",
+          transport: "direct",
+          primaryModel: "booke-gemma4-12b-q4:latest",
+        },
+        tts: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+          accountId: "elizacloud",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-ollama")).toBe(true);
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+  });
+
+  it("does not load Ollama when local runtime routes chat through Eliza Cloud", () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "cloud-test";
+    process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
+
+    const config: ElizaConfig = {
+      deploymentTarget: { runtime: "local" },
+      cloud: {
+        apiKey: "cloud-test",
+        agentId: "agent-test",
+      },
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+          accountId: "elizacloud",
+        },
+      },
+    } as ElizaConfig;
+
+    const names = collectPluginNames(config);
+
+    expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
+    expect(names.has("@elizaos/plugin-ollama")).toBe(false);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
+  });
+
   it("keeps plugin-local-inference when only local embeddings are disabled", () => {
     process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
 

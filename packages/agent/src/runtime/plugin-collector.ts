@@ -15,10 +15,12 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import {
+  getFirstRunProviderOption,
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
+  normalizeFirstRunProviderId,
   type ResolvedElizaCloudTopology,
   resolveDeploymentTargetInConfig,
   resolveElizaCloudTopology,
@@ -240,6 +242,17 @@ function removeAllModelProviderSurfaces(pluginsToLoad: Set<string>): void {
   removeDirectModelProviderSurfaces(pluginsToLoad);
 }
 
+function resolveProviderPluginFromRouteBackend(
+  backend: unknown,
+): string | null {
+  const normalized = normalizeFirstRunProviderId(backend);
+  if (!normalized || normalized === "elizacloud") return null;
+  const pluginName = getFirstRunProviderOption(normalized)?.pluginName;
+  return pluginName && DIRECT_MODEL_PROVIDER_PLUGINS.has(pluginName)
+    ? pluginName
+    : null;
+}
+
 /**
  * Optional feature plugins keyed by feature name.
  *
@@ -339,6 +352,10 @@ export function collectPluginNames(
   const serviceRouting = resolveServiceRoutingInConfig(
     config as Record<string, unknown>,
   );
+  const llmTextRoute = serviceRouting?.llmText;
+  const llmTextUsesElizaCloud =
+    llmTextRoute?.transport === "cloud-proxy" &&
+    normalizeFirstRunProviderId(llmTextRoute.backend) === "elizacloud";
   const shellPluginDisabled = config.features?.shellEnabled === false;
   const cloudTopology = resolveElizaCloudTopology(
     config as Record<string, unknown>,
@@ -369,6 +386,7 @@ export function collectPluginNames(
       isTruthyCloudEnvValue(process.env.ELIZAOS_CLOUD_ENABLED));
   const cloudEffectivelyEnabled =
     resolveCloudPluginRequirement(cloudTopology, cloudPluginRequestedByEnv) ||
+    llmTextUsesElizaCloud ||
     isCloudContainer;
   // cloudHandlesInference gates whether the cloud plugin *replaces* direct
   // provider plugins for model calls.  Cloud containers that go through the
@@ -377,6 +395,7 @@ export function collectPluginNames(
   // so OR the container has a direct cloud API key for elizacloud inference.
   const cloudHandlesInference =
     cloudTopology.services.inference ||
+    llmTextUsesElizaCloud ||
     (isCloudContainer && Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim()));
   const _configEnv = config.env as
     | (Record<string, unknown> & { vars?: Record<string, unknown> })
@@ -539,6 +558,26 @@ export function collectPluginNames(
     ) {
       pluginsToLoad.add(pluginName);
       track(pluginName, `env: ${envKey}`);
+    }
+  }
+
+  if (
+    llmTextRoute &&
+    (llmTextRoute.transport === "direct" || llmTextRoute.transport === "remote")
+  ) {
+    const routedProviderPlugin = resolveProviderPluginFromRouteBackend(
+      llmTextRoute.backend,
+    );
+    if (
+      routedProviderPlugin &&
+      !isPluginExplicitlyDisabled(routedProviderPlugin) &&
+      isOptionalProviderPackageAvailable(routedProviderPlugin)
+    ) {
+      pluginsToLoad.add(routedProviderPlugin);
+      track(
+        routedProviderPlugin,
+        `serviceRouting.llmText.backend=${llmTextRoute.backend}`,
+      );
     }
   }
 

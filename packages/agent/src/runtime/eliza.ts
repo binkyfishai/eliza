@@ -33,6 +33,7 @@ import {
 import { BootTimer } from "./boot-timer.ts";
 import { runFirstTimeSetup } from "./first-time-setup.ts";
 import { resolveConfigEnvForProcess } from "./operations/vault-bridge.ts";
+import { collectPluginNames } from "./plugin-collector.ts";
 import {
   type PluginResolutionPhase,
   resolvePlugins,
@@ -46,7 +47,6 @@ import { normalizeDirectCerebrasProviderConfig } from "./provider-config-normali
 
 export {
   CHANNEL_PLUGIN_MAP,
-  collectPluginNames,
   OPTIONAL_PLUGIN_MAP,
   PROVIDER_PLUGIN_MAP,
 } from "./plugin-collector.ts";
@@ -550,12 +550,19 @@ function shouldBlockDeferredPluginImports(): boolean {
 
 async function registerStaticPluginPhase(
   phase: CoreStaticPluginPhase,
+  allowedPackageNames?: ReadonlySet<string>,
 ): Promise<void> {
   const bootTimeoutMs = Number(
     process.env.ELIZA_PLUGIN_BOOT_TIMEOUT_MS ?? 30_000,
   );
   const registrations = CORE_STATIC_PLUGIN_REGISTRATIONS.filter(
-    (registration) => registration.phase === phase,
+    (registration) =>
+      registration.phase === phase &&
+      (!allowedPackageNames ||
+        allowedPackageNames.has(registration.packageName) ||
+        (registration.registryName
+          ? allowedPackageNames.has(registration.registryName)
+          : false)),
   );
   logger.info(
     `[boot] resolving ${phase} plugins (${registrations.length}, timeout=${bootTimeoutMs}ms)`,
@@ -691,11 +698,15 @@ async function ensureBlockingCoreStaticPluginsRegistered(): Promise<void> {
   await _blockingStaticPluginsRegistrationPromise;
 }
 
-export async function ensureDeferredCoreStaticPluginsRegistered(): Promise<void> {
+export async function ensureDeferredCoreStaticPluginsRegistered(
+  allowedPackageNames?: ReadonlySet<string>,
+): Promise<void> {
   if (_deferredStaticPluginsRegistered) return;
   if (!_deferredStaticPluginsRegistrationPromise) {
-    _deferredStaticPluginsRegistrationPromise =
-      registerStaticPluginPhase("deferred");
+    _deferredStaticPluginsRegistrationPromise = registerStaticPluginPhase(
+      "deferred",
+      allowedPackageNames,
+    );
   }
   await _deferredStaticPluginsRegistrationPromise;
 }
@@ -4801,7 +4812,8 @@ export async function startEliza(
     if (blockDeferredPluginImports) {
       return resolvedPlugins;
     }
-    await ensureDeferredCoreStaticPluginsRegistered();
+    const selectedPluginNames = collectPluginNames(config);
+    await ensureDeferredCoreStaticPluginsRegistered(selectedPluginNames);
     const deferredResolvedPlugins = await resolvePlugins(config, {
       quiet: preOnboarding,
       phase: "deferred",

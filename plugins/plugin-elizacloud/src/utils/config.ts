@@ -5,9 +5,9 @@ import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core";
 export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL = "zai-glm-4.7";
 
 const ELIZA_CLOUD_TEXT_MODEL_ALIASES: Record<string, string> = {
-  "openai/gpt-oss-120b": DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-  "openai/gpt-oss-120b:free": DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
-  "openai/gpt-oss-120b:nitro": DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  "openai/gpt-oss-120b": "gpt-oss-120b",
+  "openai/gpt-oss-120b:free": "gpt-oss-120b",
+  "openai/gpt-oss-120b:nitro": "gpt-oss-120b",
 };
 
 function getEnvValue(key: string): string | undefined {

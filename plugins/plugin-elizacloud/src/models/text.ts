@@ -390,6 +390,24 @@ function normalizeNativeToolChoice(toolChoice: unknown): unknown {
   return toolName ? { type: "function", function: { name: toolName } } : toolChoice;
 }
 
+function resolveNativeMaxTokens(modelName: string, requested: unknown): number {
+  const parsed =
+    typeof requested === "number" && Number.isFinite(requested)
+      ? Math.floor(requested)
+      : 8192;
+  const base = Math.max(1, parsed);
+
+  // GLM can return null content / provider-side 500s for tiny native
+  // chat-completions budgets. Keep normal callers' larger budgets intact, but
+  // ensure native calls have enough room to emit a valid assistant message or
+  // tool call.
+  if (modelName.startsWith("zai-glm-")) {
+    return Math.max(base, 2048);
+  }
+
+  return base;
+}
+
 function buildNativeResponseFormat(responseSchema: unknown): unknown {
   if (!responseSchema) {
     return undefined;
@@ -551,7 +569,7 @@ function buildNativeRequestBody(
   const requestBody: Record<string, unknown> = {
     model: requestModelName,
     messages: buildNativeMessages(params, promptText, systemPrompt),
-    max_tokens: params.maxTokens ?? 8192,
+    max_tokens: resolveNativeMaxTokens(requestModelName, params.maxTokens),
   };
 
   if (!isReasoningModel(requestModelName) && typeof params.temperature === "number") {
@@ -944,6 +962,8 @@ async function generateNativeChatCompletion(
     headers,
     json: requestBody,
   });
+  const requestedMaxTokens =
+    typeof requestBody.max_tokens === "number" ? requestBody.max_tokens : 8192;
   const responseText = await response.text();
   let data: ChatCompletionsResponse = {};
   if (responseText) {
@@ -964,6 +984,17 @@ async function generateNativeChatCompletion(
       typeof errorBody?.message === "string" && errorBody.message.trim()
         ? errorBody.message.trim()
         : `elizaOS Cloud error ${response.status}`;
+    if (requestedMaxTokens < 4096 && response.status >= 400) {
+      logger.warn(
+        `[ELIZAOS_CLOUD] Native chat completion failed with max_tokens=${requestedMaxTokens}; retrying with max_tokens=4096 (status=${response.status}, model=${context.modelName}, error=${errorMessage})`
+      );
+      return generateNativeChatCompletion(
+        runtime,
+        modelType,
+        { ...params, maxTokens: 4096 },
+        context
+      );
+    }
     const requestError = new Error(errorMessage) as Error & {
       status?: number;
       error?: unknown;
@@ -989,7 +1020,20 @@ async function generateNativeChatCompletion(
   const text = extractChatCompletionText(data);
   const toolCalls = extractNativeToolCalls(data);
   if (!text.trim() && toolCalls.length === 0) {
-    throw new Error("elizaOS Cloud returned no text or tool calls");
+    if (requestedMaxTokens < 4096) {
+      logger.warn(
+        `[ELIZAOS_CLOUD] Native chat completion returned no text or tool calls with max_tokens=${requestedMaxTokens}; retrying with max_tokens=4096 (finish=${data.choices?.[0]?.finish_reason ?? "unknown"}, model=${context.modelName})`
+      );
+      return generateNativeChatCompletion(
+        runtime,
+        modelType,
+        { ...params, maxTokens: 4096 },
+        context
+      );
+    }
+    logger.warn(
+      "[ELIZAOS_CLOUD] Chat completions returned no text or tool calls; passing empty result to caller retry/fallback handling"
+    );
   }
 
   return {

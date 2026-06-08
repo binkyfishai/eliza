@@ -45,7 +45,7 @@ import type {
 } from "@elizaos/contracts";
 import { asRecord } from "../type-guards.js";
 
-export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = "openai/gpt-oss-120b:nitro";
+export const DEFAULT_ELIZA_CLOUD_TEXT_MODEL = "zai-glm-4.7";
 export const DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL = "openai/gpt-oss-120b:free";
 
 const ELIZA_CLOUD_ROUTE_BASE = {
