@@ -22,6 +22,7 @@ import {
   getNanoModel,
   getResponseHandlerModel,
   getSmallModel,
+  normalizeElizaCloudTextModelName,
 } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 import { extractResponsesOutputText } from "../utils/responses-output";
@@ -438,6 +439,42 @@ function resolvePromptCacheKey(providerOptions: Record<string, unknown>): string
   );
 }
 
+function normalizeNativeModelOption(value: unknown): unknown {
+  if (typeof value === "string") {
+    return normalizeElizaCloudTextModelName(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      typeof item === "string" ? normalizeElizaCloudTextModelName(item) : item
+    );
+  }
+  return value;
+}
+
+function normalizeNativeProviderOptionModels(
+  providerOptions: Record<string, unknown>
+): Record<string, unknown> {
+  const normalized: Record<string, unknown> = { ...providerOptions };
+  for (const key of ["model", "models"] as const) {
+    if (normalized[key] !== undefined) {
+      normalized[key] = normalizeNativeModelOption(normalized[key]);
+    }
+  }
+
+  const openrouter = recordAt(providerOptions, "openrouter");
+  if (Object.keys(openrouter).length > 0) {
+    const normalizedOpenrouter: Record<string, unknown> = { ...openrouter };
+    for (const key of ["model", "models"] as const) {
+      if (normalizedOpenrouter[key] !== undefined) {
+        normalizedOpenrouter[key] = normalizeNativeModelOption(normalizedOpenrouter[key]);
+      }
+    }
+    normalized.openrouter = normalizedOpenrouter;
+  }
+
+  return normalized;
+}
+
 function resolveNativeProviderOptions(
   params: GenerateTextParamsWithNativeOptions
 ): Record<string, unknown> | undefined {
@@ -467,7 +504,9 @@ function resolveNativeProviderOptions(
     };
   }
 
-  return Object.keys(providerOptions).length > 0 ? providerOptions : undefined;
+  return Object.keys(providerOptions).length > 0
+    ? normalizeNativeProviderOptionModels(providerOptions)
+    : undefined;
 }
 
 function applyOpenRouterPassthroughFields(
@@ -503,18 +542,19 @@ function buildNativeRequestBody(
   promptText: string,
   systemPrompt?: string
 ): Record<string, unknown> {
+  const requestModelName = normalizeElizaCloudTextModelName(modelName);
   const providerOptions = resolveNativeProviderOptions(params);
   const promptCacheKey = providerOptions ? resolvePromptCacheKey(providerOptions) : undefined;
   const tools = normalizeNativeTools(params.tools);
   const toolChoice = normalizeNativeToolChoice(params.toolChoice);
   const responseFormat = buildNativeResponseFormat(params.responseSchema);
   const requestBody: Record<string, unknown> = {
-    model: modelName,
+    model: requestModelName,
     messages: buildNativeMessages(params, promptText, systemPrompt),
     max_tokens: params.maxTokens ?? 8192,
   };
 
-  if (!isReasoningModel(modelName) && typeof params.temperature === "number") {
+  if (!isReasoningModel(requestModelName) && typeof params.temperature === "number") {
     requestBody.temperature = params.temperature;
   }
   if (tools) {
@@ -692,7 +732,7 @@ function buildGenerateParams(
   const maxTokens = params.maxTokens ?? 8192;
 
   const openai = createOpenAIClient(runtime);
-  const modelName = getModelNameForType(runtime, modelType);
+  const modelName = normalizeElizaCloudTextModelName(getModelNameForType(runtime, modelType));
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
   const userContent =
     (paramsWithAttachments.attachments?.length ?? 0) > 0

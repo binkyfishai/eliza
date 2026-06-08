@@ -4,6 +4,12 @@ import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core";
 
 export const DEFAULT_ELIZA_CLOUD_LARGE_MODEL = "zai-glm-4.7";
 
+const ELIZA_CLOUD_TEXT_MODEL_ALIASES: Record<string, string> = {
+  "openai/gpt-oss-120b": DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  "openai/gpt-oss-120b:free": DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  "openai/gpt-oss-120b:nitro": DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+};
+
 function getEnvValue(key: string): string | undefined {
   if (typeof process === "undefined") {
     return undefined;
@@ -22,6 +28,23 @@ export function getSetting(
     return String(value);
   }
   return getEnvValue(key) ?? defaultValue;
+}
+
+export function normalizeElizaCloudTextModelName(modelName: string): string {
+  const normalized = modelName.trim();
+  if (normalized.startsWith("openrouter:")) {
+    return normalizeElizaCloudTextModelName(normalized.slice("openrouter:".length));
+  }
+  return ELIZA_CLOUD_TEXT_MODEL_ALIASES[normalized] ?? normalized;
+}
+
+function getTextModelSetting(
+  runtime: IAgentRuntime,
+  key: string,
+  defaultValue?: string
+): string | undefined {
+  const modelName = getSetting(runtime, key, defaultValue);
+  return modelName ? normalizeElizaCloudTextModelName(modelName) : undefined;
 }
 
 export function isBrowser(): boolean {
@@ -74,66 +97,66 @@ export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
 
 export function getSmallModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "ELIZAOS_CLOUD_SMALL_MODEL") ??
-    (getSetting(runtime, "SMALL_MODEL", DEFAULT_ELIZA_CLOUD_TEXT_MODEL) as string)
+    getTextModelSetting(runtime, "ELIZAOS_CLOUD_SMALL_MODEL") ??
+    (getTextModelSetting(runtime, "SMALL_MODEL", DEFAULT_ELIZA_CLOUD_TEXT_MODEL) as string)
   );
 }
 
 export function getNanoModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "ELIZAOS_CLOUD_NANO_MODEL") ??
-    getSetting(runtime, "NANO_MODEL") ??
+    getTextModelSetting(runtime, "ELIZAOS_CLOUD_NANO_MODEL") ??
+    getTextModelSetting(runtime, "NANO_MODEL") ??
     getSmallModel(runtime)
   );
 }
 
 export function getMediumModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "ELIZAOS_CLOUD_MEDIUM_MODEL") ??
-    getSetting(runtime, "MEDIUM_MODEL") ??
+    getTextModelSetting(runtime, "ELIZAOS_CLOUD_MEDIUM_MODEL") ??
+    getTextModelSetting(runtime, "MEDIUM_MODEL") ??
     getSmallModel(runtime)
   );
 }
 
 export function getLargeModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "ELIZAOS_CLOUD_LARGE_MODEL") ??
-    (getSetting(runtime, "LARGE_MODEL", DEFAULT_ELIZA_CLOUD_LARGE_MODEL) as string)
+    getTextModelSetting(runtime, "ELIZAOS_CLOUD_LARGE_MODEL") ??
+    (getTextModelSetting(runtime, "LARGE_MODEL", DEFAULT_ELIZA_CLOUD_LARGE_MODEL) as string)
   );
 }
 
 export function getMegaModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "ELIZAOS_CLOUD_MEGA_MODEL") ??
-    getSetting(runtime, "MEGA_MODEL") ??
+    getTextModelSetting(runtime, "ELIZAOS_CLOUD_MEGA_MODEL") ??
+    getTextModelSetting(runtime, "MEGA_MODEL") ??
     getLargeModel(runtime)
   );
 }
 
 export function getResponseHandlerModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL") ??
-    getSetting(runtime, "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL") ??
-    getSetting(runtime, "RESPONSE_HANDLER_MODEL") ??
-    getSetting(runtime, "SHOULD_RESPOND_MODEL") ??
+    getTextModelSetting(runtime, "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL") ??
+    getTextModelSetting(runtime, "ELIZAOS_CLOUD_SHOULD_RESPOND_MODEL") ??
+    getTextModelSetting(runtime, "RESPONSE_HANDLER_MODEL") ??
+    getTextModelSetting(runtime, "SHOULD_RESPOND_MODEL") ??
     getSmallModel(runtime)
   );
 }
 
 export function getActionPlannerModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL") ??
-    getSetting(runtime, "ELIZAOS_CLOUD_PLANNER_MODEL") ??
-    getSetting(runtime, "ACTION_PLANNER_MODEL") ??
-    getSetting(runtime, "PLANNER_MODEL") ??
+    getTextModelSetting(runtime, "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL") ??
+    getTextModelSetting(runtime, "ELIZAOS_CLOUD_PLANNER_MODEL") ??
+    getTextModelSetting(runtime, "ACTION_PLANNER_MODEL") ??
+    getTextModelSetting(runtime, "PLANNER_MODEL") ??
     getLargeModel(runtime)
   );
 }
 
 export function getResponseModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "ELIZAOS_CLOUD_RESPONSE_MODEL") ??
-    getSetting(runtime, "RESPONSE_MODEL") ??
+    getTextModelSetting(runtime, "ELIZAOS_CLOUD_RESPONSE_MODEL") ??
+    getTextModelSetting(runtime, "RESPONSE_MODEL") ??
     getLargeModel(runtime)
   );
 }
@@ -151,8 +174,8 @@ export function getImageGenerationModel(runtime: IAgentRuntime): string {
 
 export function getResearchModel(runtime: IAgentRuntime): string {
   return (
-    getSetting(runtime, "ELIZAOS_CLOUD_RESEARCH_MODEL") ??
-    (getSetting(runtime, "RESEARCH_MODEL", "o3-deep-research") as string)
+    getTextModelSetting(runtime, "ELIZAOS_CLOUD_RESEARCH_MODEL") ??
+    (getTextModelSetting(runtime, "RESEARCH_MODEL", "o3-deep-research") as string)
   );
 }
 
