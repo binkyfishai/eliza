@@ -157,6 +157,24 @@ function parseJsonObjectFromModelText(
   return parseCandidate(trimmed.slice(start, end + 1));
 }
 
+function shouldSkipOptionalModelAugmentations(
+  message: ReturnType<typeof createMessageMemory>,
+): boolean {
+  const content = message.content as
+    | (Content & { metadata?: Record<string, unknown> })
+    | undefined;
+  return content?.metadata?.skipOptionalModelAugmentations === true;
+}
+
+function shouldSkipDocumentAugmentation(
+  message: ReturnType<typeof createMessageMemory>,
+): boolean {
+  const content = message.content as
+    | (Content & { metadata?: Record<string, unknown> })
+    | undefined;
+  return content?.metadata?.skipDocumentAugmentation === true;
+}
+
 async function withOptionalTimeout<T>(
   runtime: AgentRuntime,
   label: string,
@@ -197,6 +215,7 @@ export async function maybeAugmentChatMessageWithDocuments(
 ): Promise<ReturnType<typeof createMessageMemory>> {
   const userPrompt = extractCompatTextContent(message.content).trim();
   if (!userPrompt || !runtime.agentId) return message;
+  if (shouldSkipDocumentAugmentation(message)) return message;
 
   // Hosts that run with an empty-vector embedding handler — e.g. Capacitor mobile
   // where loading the bge GGUF on top of the chat GGUF would OOM the
@@ -395,7 +414,10 @@ export async function maybeAugmentChatMessageWithDocuments(
       .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
       .slice(0, CHAT_DOCUMENTS_LIMIT);
 
-    if (relevantMatches.length === 0) {
+    if (
+      relevantMatches.length === 0 &&
+      !shouldSkipOptionalModelAugmentations(message)
+    ) {
       const recoveredQueries = await recoverDocumentSearchQueriesWithLlm();
       for (const query of recoveredQueries) {
         const recovered = await loadMatchesAcrossScopes(query);

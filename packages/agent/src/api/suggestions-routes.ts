@@ -24,6 +24,8 @@ import {
   ModelType,
   readRequestBodyBuffer,
 } from "@elizaos/core";
+import type { ElizaConfig } from "../config/config.ts";
+import { usesElizaCloudTextRouting } from "./server-helpers.ts";
 
 const MAX_BODY_BYTES = 16 * 1024;
 const SUGGESTION_COUNT = 3;
@@ -43,6 +45,7 @@ export interface SuggestionsRouteContext {
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
   runtime: AgentRuntime | null | undefined;
+  config?: ElizaConfig | null | undefined;
 }
 
 interface ContextMessage {
@@ -312,7 +315,7 @@ function padWithHeuristics(
 export async function handleSuggestionsRoutes(
   ctx: SuggestionsRouteContext,
 ): Promise<boolean> {
-  const { req, res, method, pathname, json, error, runtime } = ctx;
+  const { req, res, method, pathname, json, error, runtime, config } = ctx;
   if (pathname !== "/api/suggestions") return false;
   if (method !== "POST") {
     error(res, "Method not allowed", 405);
@@ -327,6 +330,11 @@ export async function handleSuggestionsRoutes(
 
   // No runtime → serve the deterministic tier (degrade-not-empty, #8225).
   if (!runtime) {
+    json(res, padWithHeuristics([], request));
+    return true;
+  }
+
+  if (config && usesElizaCloudTextRouting(config)) {
     json(res, padWithHeuristics([], request));
     return true;
   }

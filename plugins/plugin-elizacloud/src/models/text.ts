@@ -799,54 +799,39 @@ function buildGenerateParams(
   return { generateParams, modelName, modelType, prompt: promptText, systemPrompt };
 }
 
-async function generateTextWithModel(
+function isNativeFallbackError(error: unknown): boolean {
+  const status = (error as { status?: unknown } | undefined)?.status;
+  return typeof status === "number" && status >= 500;
+}
+
+async function generateResponsesText(
   runtime: IAgentRuntime,
   modelType: TextModelType,
-  params: GenerateTextParams
-): Promise<string | TextStreamResult> {
-  const { modelName, prompt, systemPrompt } = buildGenerateParams(runtime, modelType, params);
-  const paramsWithNative = params as GenerateTextParamsWithNativeOptions;
-
-  logger.debug(`[ELIZAOS_CLOUD] Generating text with ${modelType} model: ${modelName}`);
-
-  if (params.stream) {
-    logger.debug(
-      "[ELIZAOS_CLOUD] Streaming text disabled for responses compatibility; falling back to buffered response."
-    );
+  params: GenerateTextParams,
+  context: {
+    modelName: string;
+    prompt: string;
+    systemPrompt?: string;
   }
-
-  logger.log(`[ELIZAOS_CLOUD] Using ${modelType} model: ${modelName}`);
-  logger.log(prompt);
-
-  if (hasNativeTransportOptions(paramsWithNative)) {
-    const nativeResult = await generateNativeChatCompletion(runtime, modelType, paramsWithNative, {
-      modelName,
-      prompt,
-      systemPrompt,
-    });
-    return shouldReturnNativeResult(paramsWithNative)
-      ? (nativeResult as NativeGenerateTextModelResult)
-      : nativeResult.text;
-  }
-
-  const reasoning = isReasoningModel(modelName);
+): Promise<string> {
+  const reasoning = isReasoningModel(context.modelName);
   const input: Array<{
     role: "system" | "user";
     content: Array<{ type: "input_text"; text: string }>;
   }> = [];
-  if (systemPrompt) {
+  if (context.systemPrompt) {
     input.push({
       role: "system",
-      content: [{ type: "input_text", text: systemPrompt }],
+      content: [{ type: "input_text", text: context.systemPrompt }],
     });
   }
   input.push({
     role: "user",
-    content: [{ type: "input_text", text: prompt }],
+    content: [{ type: "input_text", text: context.prompt }],
   });
 
   const requestBody: Record<string, unknown> = {
-    model: modelName,
+    model: context.modelName,
     input,
     max_output_tokens: params.maxTokens ?? 8192,
   };
@@ -858,7 +843,7 @@ async function generateTextWithModel(
     "X-Eliza-Llm-Purpose": getPurposeForModelType(modelType),
     "X-Eliza-Model-Type": modelType,
   };
-  if (isSpanSamplerHonoringModel(modelName)) {
+  if (isSpanSamplerHonoringModel(context.modelName)) {
     const samplerHeader = buildSpanSamplerHeader(params.spanSamplerPlan);
     if (samplerHeader) {
       responsesHeaders["x-eliza-span-samplers"] = samplerHeader;
@@ -903,14 +888,14 @@ async function generateTextWithModel(
     emitModelUsageEvent(
       runtime,
       modelType,
-      prompt,
+      context.prompt,
       {
         inputTokens: data.usage.input_tokens ?? 0,
         outputTokens: data.usage.output_tokens ?? 0,
         totalTokens: data.usage.total_tokens ?? 0,
       },
       {
-        modelName: getModelNameForType(runtime, modelType),
+        modelName: context.modelName,
         ...(() => {
           const costUsd = extractCostUsd(data.usage, response);
           return typeof costUsd === "number" ? { costUsd } : {};
@@ -925,6 +910,90 @@ async function generateTextWithModel(
   }
 
   return text;
+}
+
+async function generateTextWithModel(
+  runtime: IAgentRuntime,
+  modelType: TextModelType,
+  params: GenerateTextParams
+): Promise<string | TextStreamResult> {
+  const { modelName, prompt, systemPrompt } = buildGenerateParams(runtime, modelType, params);
+  const paramsWithNative = params as GenerateTextParamsWithNativeOptions;
+
+  logger.debug(`[ELIZAOS_CLOUD] Generating text with ${modelType} model: ${modelName}`);
+
+  if (params.stream) {
+    logger.debug(
+      "[ELIZAOS_CLOUD] Streaming text disabled for responses compatibility; falling back to buffered response."
+    );
+  }
+
+  logger.log(`[ELIZAOS_CLOUD] Using ${modelType} model: ${modelName}`);
+  logger.log(prompt);
+
+  if (hasNativeTransportOptions(paramsWithNative)) {
+    const nativeContext = {
+      modelName,
+      prompt,
+      systemPrompt,
+    };
+    const nativeResult = await generateNativeChatCompletion(
+      runtime,
+      modelType,
+      paramsWithNative,
+      nativeContext
+    ).catch(async (error) => {
+      if (!isNativeFallbackError(error)) {
+        throw error;
+      }
+      logger.warn(
+        `[ELIZAOS_CLOUD] Native chat completion failed with provider/server error; retrying as plain text prompt (model=${modelName}, error=${
+          error instanceof Error ? error.message : String(error)
+        })`
+      );
+      try {
+        return await generateNativeChatCompletion(
+          runtime,
+          modelType,
+          {
+            ...paramsWithNative,
+            maxTokens: Math.max(params.maxTokens ?? 0, 4096),
+            messages: undefined,
+            tools: undefined,
+            toolChoice: undefined,
+            responseSchema: undefined,
+            providerOptions: undefined,
+          },
+          nativeContext
+        );
+      } catch (plainError) {
+        logger.warn(
+          `[ELIZAOS_CLOUD] Plain chat completion fallback failed; falling back to responses route (model=${modelName}, error=${
+            plainError instanceof Error ? plainError.message : String(plainError)
+          })`
+        );
+      }
+      const fallbackText = await generateResponsesText(runtime, modelType, params, nativeContext);
+      return {
+        text: fallbackText,
+        toolCalls: [],
+        finishReason: "fallback",
+        providerMetadata: {
+          modelName,
+          fallback: "responses",
+        },
+      } satisfies NativeGenerateTextResult;
+    });
+    return shouldReturnNativeResult(paramsWithNative)
+      ? (nativeResult as NativeGenerateTextModelResult)
+      : nativeResult.text;
+  }
+
+  return generateResponsesText(runtime, modelType, params, {
+    modelName,
+    prompt,
+    systemPrompt,
+  });
 }
 
 async function generateNativeChatCompletion(

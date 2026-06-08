@@ -2255,6 +2255,12 @@ function stringArrayProperty(value: unknown): string[] {
 		.filter((entry) => entry.length > 0);
 }
 
+function shouldSkipPostTurnEvaluators(message: Memory): boolean {
+	const metadata = (message.content as { metadata?: unknown } | undefined)
+		?.metadata;
+	return isRecord(metadata) && metadata.skipPostTurnEvaluators === true;
+}
+
 function mergeAgentContexts(
 	...lists: Array<readonly AgentContext[] | undefined>
 ): AgentContext[] {
@@ -10531,12 +10537,17 @@ export class DefaultMessageService implements IMessageService {
 			shouldRespondToMessage && !isStopResponse(responseContent);
 		if (simpleReplyDelivered) {
 			void (async () => {
-				await runPostDeliverySideEffect(runtime, "post_turn_evaluators", () =>
-					runPostTurnEvaluators(runtime, message, state, {
-						didRespond: didRespondGate,
-						responses: responseMessages,
-					}),
-				);
+				if (!shouldSkipPostTurnEvaluators(message)) {
+					await runPostDeliverySideEffect(
+						runtime,
+						"post_turn_evaluators",
+						() =>
+							runPostTurnEvaluators(runtime, message, state, {
+								didRespond: didRespondGate,
+								responses: responseMessages,
+							}),
+					);
+				}
 				await runPostDeliverySideEffect(runtime, "ALWAYS_AFTER", () =>
 					runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
 						didRespond: didRespondGate,
@@ -10545,10 +10556,12 @@ export class DefaultMessageService implements IMessageService {
 				);
 			})();
 		} else {
-			await runPostTurnEvaluators(runtime, message, state, {
-				didRespond: didRespondGate,
-				responses: responseMessages,
-			});
+			if (!shouldSkipPostTurnEvaluators(message)) {
+				await runPostTurnEvaluators(runtime, message, state, {
+					didRespond: didRespondGate,
+					responses: responseMessages,
+				});
+			}
 			await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
 				didRespond: didRespondGate,
 				responses: responseMessages,

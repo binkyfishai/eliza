@@ -245,6 +245,14 @@ export function hasPersistedFirstRunState(config: ElizaConfig): boolean {
   );
 }
 
+export function usesElizaCloudTextRouting(config: ElizaConfig): boolean {
+  const llmText = resolveServiceRoutingInConfig(
+    config as Record<string, unknown>,
+  )?.llmText;
+  const backend = normalizeFirstRunProviderId(llmText?.backend);
+  return llmText?.transport === "cloud-proxy" && backend === "elizacloud";
+}
+
 const APP_OWNER_NAME_MAX_LENGTH = 60;
 
 /** Resolve the app owner's display name from config, or fall back to "User". */

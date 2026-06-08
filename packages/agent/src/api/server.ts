@@ -2943,6 +2943,7 @@ async function handleRequest(
       json,
       error,
       runtime: state.runtime,
+      config: state.config,
     })
   ) {
     return;

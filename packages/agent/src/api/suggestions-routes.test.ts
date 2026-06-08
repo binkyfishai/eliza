@@ -240,6 +240,41 @@ describe("handleSuggestionsRoutes guards", () => {
     expect(payload.suggestions[0]).toBe("Reconcile my budget");
   });
 
+  it("serves heuristics without a model call when chat is routed through Eliza Cloud", async () => {
+    const json = vi.fn();
+    const error = vi.fn();
+    const runtime = {
+      character: { name: "Eliza" },
+      logger: { warn: vi.fn() },
+      useModel: vi.fn().mockResolvedValue('{"suggestions":["Use model"]}'),
+    };
+    const handled = await handleSuggestionsRoutes({
+      req: jsonReq({ scope: "page-wallet", hour: 9 }),
+      res,
+      method: "POST",
+      pathname: "/api/suggestions",
+      json,
+      error,
+      runtime: runtime as never,
+      config: {
+        serviceRouting: {
+          llmText: {
+            backend: "elizacloud",
+            transport: "cloud-proxy",
+          },
+        },
+      } as never,
+    });
+    expect(handled).toBe(true);
+    const payload = json.mock.calls[0][1] as {
+      suggestions: string[];
+      tier: string;
+    };
+    expect(payload.tier).toBe("heuristic");
+    expect(payload.suggestions).toHaveLength(3);
+    expect(runtime.useModel).not.toHaveBeenCalled();
+  });
+
   it("serves the heuristic tier when generation throws", async () => {
     const json = vi.fn();
     const error = vi.fn();

@@ -64,6 +64,7 @@ import {
   resolveAppUserName,
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
+  usesElizaCloudTextRouting,
 } from "./server-helpers.ts";
 import {
   resolveWaifuChatAccess,
@@ -1654,6 +1655,16 @@ export async function handleConversationRoutes(
       return true;
     }
 
+    const skipOptionalCloudModelWork = usesElizaCloudTextRouting(state.config);
+    const effectiveChatMetadata = skipOptionalCloudModelWork
+      ? {
+          ...(chatMetadata ?? {}),
+          skipDocumentAugmentation: true,
+          skipOptionalModelAugmentations: true,
+          skipPostTurnEvaluators: true,
+        }
+      : chatMetadata;
+
     const { userMessage, messageToStore } = buildUserMessages({
       images,
       prompt,
@@ -1662,7 +1673,7 @@ export async function handleConversationRoutes(
       roomId: conv.roomId,
       channelType,
       messageSource: source,
-      metadata: chatMetadata,
+      metadata: effectiveChatMetadata,
     });
 
     try {
@@ -2232,24 +2243,26 @@ export async function handleConversationRoutes(
         );
       }
 
-      const titleAbortTracker = createRequestDisconnectAbortTracker({
-        req,
-        res,
-        operation: "conversation title generation",
-      });
       let newTitle: string | null = null;
-      try {
-        newTitle = await generateConversationTitle(
-          state.runtime,
-          prompt,
-          state.agentName,
-          { signal: titleAbortTracker.signal },
-        );
-      } finally {
-        titleAbortTracker.markCompleted();
-        titleAbortTracker.dispose();
+      if (!usesElizaCloudTextRouting(state.config)) {
+        const titleAbortTracker = createRequestDisconnectAbortTracker({
+          req,
+          res,
+          operation: "conversation title generation",
+        });
+        try {
+          newTitle = await generateConversationTitle(
+            state.runtime,
+            prompt,
+            state.agentName,
+            { signal: titleAbortTracker.signal },
+          );
+        } finally {
+          titleAbortTracker.markCompleted();
+          titleAbortTracker.dispose();
+        }
+        if (titleAbortTracker.isAborted()) return true;
       }
-      if (titleAbortTracker.isAborted()) return true;
 
       const fallbackTitle = prompt
         .replace(/\s+/g, " ")

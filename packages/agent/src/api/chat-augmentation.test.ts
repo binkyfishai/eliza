@@ -104,4 +104,60 @@ describe("maybeAugmentChatMessageWithDocuments", () => {
     );
     expect(recoverySignal?.aborted).toBe(true);
   });
+
+  it("skips LLM query recovery when optional model augmentations are disabled", async () => {
+    const message = {
+      ...makeMessage(),
+      content: {
+        text: "what are you up to?",
+        metadata: { skipOptionalModelAugmentations: true },
+      },
+    } as ReturnType<typeof createMessageMemory>;
+    const documents = {
+      searchDocuments: vi.fn().mockResolvedValue([]),
+    };
+    const useModel = vi.fn().mockResolvedValue('{"queries":["anything"]}');
+    const runtime = makeRuntime(documents, useModel);
+
+    const result = await maybeAugmentChatMessageWithDocuments(
+      runtime,
+      message,
+      {
+        lookupTimeoutMs: 10,
+        recoveryTimeoutMs: 10,
+      },
+    );
+
+    expect(result).toBe(message);
+    expect(documents.searchDocuments).toHaveBeenCalledTimes(2);
+    expect(useModel).not.toHaveBeenCalled();
+  });
+
+  it("skips document lookup entirely when document augmentation is disabled", async () => {
+    const message = {
+      ...makeMessage(),
+      content: {
+        text: "what are you up to?",
+        metadata: { skipDocumentAugmentation: true },
+      },
+    } as ReturnType<typeof createMessageMemory>;
+    const documents = {
+      searchDocuments: vi.fn().mockResolvedValue([]),
+    };
+    const useModel = vi.fn().mockResolvedValue('{"queries":["anything"]}');
+    const runtime = makeRuntime(documents, useModel);
+
+    const result = await maybeAugmentChatMessageWithDocuments(
+      runtime,
+      message,
+      {
+        lookupTimeoutMs: 10,
+        recoveryTimeoutMs: 10,
+      },
+    );
+
+    expect(result).toBe(message);
+    expect(documents.searchDocuments).not.toHaveBeenCalled();
+    expect(useModel).not.toHaveBeenCalled();
+  });
 });
