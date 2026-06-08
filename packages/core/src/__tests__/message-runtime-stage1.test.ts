@@ -698,6 +698,67 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(params.responseSkeleton).toBeUndefined();
 	});
 
+	it("retries cut-off fast direct replies with a larger budget", async () => {
+		const runtime = makeRuntime([
+			{
+				text: "I can answer questions, help you draft or edit text, and create or manage tasks. If you need something specific, just let me",
+				finishReason: "length",
+			},
+			"I can answer questions, help you draft or edit text, and create or manage tasks. If you need something specific, just tell me what you want to do.",
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "What can you do?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(useModelCalls(runtime)[0]?.[0]).toBe(ModelType.TEXT_SMALL);
+		expect(useModelCalls(runtime)[1]?.[0]).toBe(ModelType.TEXT_SMALL);
+		expect(useModelCalls(runtime)[1]?.[1]).toEqual(
+			expect.objectContaining({ maxTokens: 384 }),
+		);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I can answer questions, help you draft or edit text, and create or manage tasks. If you need something specific, just tell me what you want to do.",
+			);
+		}
+	});
+
+	it("retries short direct replies that end without punctuation", async () => {
+		const runtime = makeRuntime([
+			"I can answer questions, give information, and help you create",
+			"I can answer questions, give information, and help you create workflows or draft text.",
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "What can you do?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+		expect(useModelCalls(runtime)[1]?.[1]).toEqual(
+			expect.objectContaining({ maxTokens: 384 }),
+		);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I can answer questions, give information, and help you create workflows or draft text.",
+			);
+		}
+	});
+
 	it("honors exact-word direct replies even when the small model emits thinking", async () => {
 		const runtime = makeRuntime([
 			`routing_thought: Direct private chat fast path.

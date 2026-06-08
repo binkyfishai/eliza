@@ -227,6 +227,7 @@ const PLANNER_CONTROL_ACTIONS = new Set(
 );
 const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 384;
 const DIRECT_REPLY_FAST_PATH_MAX_TOKENS = 96;
+const DIRECT_REPLY_RETRY_MAX_TOKENS = 384;
 const DEFAULT_STAGE1_MAX_TOKENS = 2048;
 const STAGE1_TRUNCATION_REPLY =
 	"That answer got cut off before I could finish it. Please try again with a shorter request or ask for a narrower format.";
@@ -1559,6 +1560,13 @@ function getV5ModelText(raw: string | GenerateTextResult): string {
 		return responseText;
 	}
 	return typeof raw.text === "string" ? raw.text : JSON.stringify(raw);
+}
+
+function getV5FinishReason(
+	raw: string | GenerateTextResult,
+): string | undefined {
+	if (typeof raw === "string") return undefined;
+	return typeof raw.finishReason === "string" ? raw.finishReason : undefined;
 }
 
 function extractGenerateTextContentText(raw: GenerateTextResult): string {
@@ -2932,6 +2940,20 @@ function extractExactWordsReply(
 	return reply;
 }
 
+function looksLikeCutOffDirectReply(text: string): boolean {
+	const compact = text.replace(/\s+/g, " ").trim();
+	if (!compact) return false;
+	if (/[.!?…][)"'’”\]]*$/.test(compact)) return false;
+	const words = compact.split(/\s+/).filter(Boolean);
+	if (words.length < 5) return false;
+	return true;
+}
+
+function isLengthLimitedDirectReply(raw: string | GenerateTextResult): boolean {
+	const finishReason = getV5FinishReason(raw)?.toLowerCase();
+	return finishReason === "length" || finishReason === "max_tokens";
+}
+
 async function generateDirectReplyModel(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -2963,17 +2985,42 @@ async function generateDirectReplyModel(args: {
 		| string
 		| GenerateTextResult;
 	let modelText = stripReasoningBlocks(getV5ModelText(raw)).trim();
+	if (
+		args.retryWithLargeOnEmpty &&
+		!args.signal?.aborted &&
+		(isLengthLimitedDirectReply(raw) || looksLikeCutOffDirectReply(modelText))
+	) {
+		args.runtime.logger?.warn?.(
+			{
+				src: "service:message",
+				model: ModelType.TEXT_SMALL,
+				reason: isLengthLimitedDirectReply(raw) ? "length" : "cut_off",
+			},
+			"Direct reply fast path looked cut off; retrying with larger small-model budget",
+		);
+		const retryRaw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
+			...params,
+			maxTokens: DIRECT_REPLY_RETRY_MAX_TOKENS,
+		})) as string | GenerateTextResult;
+		const retryText = stripReasoningBlocks(getV5ModelText(retryRaw)).trim();
+		if (retryText) {
+			raw = retryRaw;
+			modelText = retryText;
+		}
+	}
 	if (!modelText && args.retryWithLargeOnEmpty && !args.signal?.aborted) {
 		args.runtime.logger?.warn?.(
 			{
 				src: "service:message",
 				model: ModelType.TEXT_SMALL,
+				reason: "empty",
 			},
 			"Direct reply fast path returned empty text; retrying with large text model",
 		);
-		raw = (await args.runtime.useModel(ModelType.TEXT_LARGE, params)) as
-			| string
-			| GenerateTextResult;
+		raw = (await args.runtime.useModel(ModelType.TEXT_LARGE, {
+			...params,
+			maxTokens: DIRECT_REPLY_RETRY_MAX_TOKENS,
+		})) as string | GenerateTextResult;
 		modelText = stripReasoningBlocks(getV5ModelText(raw)).trim();
 	}
 	return {
