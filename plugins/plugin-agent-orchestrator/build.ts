@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
 const externalDeps = await externalsFromPackageJson("./package.json");
+const nodeEntrypoints = ["index.node.ts", "src/setup-routes.ts"];
 
 async function build() {
   const totalStart = Date.now();
@@ -18,7 +19,7 @@ async function build() {
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-agent-orchestrator for Node...");
   const nodeResult = await Bun.build({
-    entrypoints: ["index.node.ts"],
+    entrypoints: nodeEntrypoints,
     outdir: join(distDir, "node"),
     target: "node",
     format: "esm",

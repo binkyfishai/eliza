@@ -446,6 +446,8 @@ export const __loadAppRoutePluginFromSpecifierForTest =
 
 const WORKFLOW_ROUTE_PLUGIN_ID = "@elizaos/plugin-workflow:routes";
 const WALLET_ROUTE_PLUGIN_ID = "@elizaos/plugin-wallet:routes";
+const AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID =
+  "@elizaos/plugin-agent-orchestrator";
 
 function getRegistryAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
   return getApps(loadRegistry()).flatMap((app) => {
@@ -559,6 +561,20 @@ function getAppRoutePluginLoaders(): AppRoutePluginRegistryEntry[] {
         loadAppRoutePluginFromSpecifier(
           "@elizaos/plugin-wallet/routes/plugin",
           "walletRoutePlugin",
+        ),
+    });
+  }
+  // plugin-agent-orchestrator follows the same route-registration pattern for
+  // `/api/orchestrator/tasks` and `/api/coding-agents/*`. The task coordinator
+  // view depends on those routes even when the side-effect registration has not
+  // run before app-route loaders are snapshotted.
+  if (!byId.has(AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID)) {
+    byId.set(AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID, {
+      id: AGENT_ORCHESTRATOR_ROUTE_PLUGIN_ID,
+      load: () =>
+        loadAppRoutePluginFromSpecifier(
+          "@elizaos/plugin-agent-orchestrator/setup-routes",
+          "codingAgentRoutePlugin",
         ),
     });
   }

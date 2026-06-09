@@ -136,4 +136,19 @@ describe("__loadAppRoutePluginFromSpecifierForTest", () => {
       ),
     ).rejects.toThrow(/definitely-missing-transitive-route-test/);
   });
+
+  it("loads the agent orchestrator route plugin from its setup-routes subpath", async () => {
+    const plugin = await __loadAppRoutePluginFromSpecifierForTest(
+      "@elizaos/plugin-agent-orchestrator/setup-routes",
+      "codingAgentRoutePlugin",
+    );
+
+    expect(plugin.name).toBe("@elizaos/plugin-agent-orchestrator-routes");
+    expect(
+      plugin.routes?.some(
+        (route) =>
+          route.type === "GET" && route.path === "/api/orchestrator/tasks",
+      ),
+    ).toBe(true);
+  });
 });
