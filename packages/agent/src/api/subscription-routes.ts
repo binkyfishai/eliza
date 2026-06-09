@@ -10,6 +10,7 @@ import {
   PostSubscriptionOpenAIExchangeRequestSchema,
 } from "@elizaos/shared";
 import type { AnthropicFlow } from "../auth/anthropic.ts";
+import type { GrokBuildFlow } from "../auth/grok-build.ts";
 import type { CodexFlow } from "../auth/openai-codex.ts";
 import {
   isSubscriptionProvider,
@@ -25,6 +26,7 @@ export type SubscriptionAuthApi = Pick<
   | "getSubscriptionStatus"
   | "startAnthropicLogin"
   | "startCodexLogin"
+  | "startGrokBuildLogin"
   | "saveCredentials"
   | "applySubscriptionCredentials"
   | "deleteCredentials"
@@ -36,6 +38,8 @@ export interface SubscriptionRouteState {
   _anthropicFlow?: AnthropicFlow;
   _codexFlow?: CodexFlow;
   _codexFlowTimer?: ReturnType<typeof setTimeout>;
+  _grokBuildFlow?: GrokBuildFlow;
+  _grokBuildFlowTimer?: ReturnType<typeof setTimeout>;
 }
 
 export interface SubscriptionRouteContext extends RouteRequestContext {
@@ -297,6 +301,118 @@ export async function handleSubscriptionRoutes(
     return true;
   }
 
+  if (method === "POST" && pathname === "/api/subscription/grok-build/start") {
+    try {
+      const { startGrokBuildLogin } = await loadSubscriptionAuth();
+      if (state._grokBuildFlow) {
+        try {
+          state._grokBuildFlow.close();
+        } catch (err) {
+          logger.debug(
+            `[api] Grok Build OAuth cleanup failed: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      }
+      clearTimeout(state._grokBuildFlowTimer);
+
+      const flow = await startGrokBuildLogin();
+      state._grokBuildFlow = flow;
+      state._grokBuildFlowTimer = setTimeout(
+        () => {
+          try {
+            flow.close();
+          } catch (err) {
+            logger.debug(
+              `[api] Grok Build OAuth cleanup failed: ${err instanceof Error ? err.message : err}`,
+            );
+          }
+          delete state._grokBuildFlow;
+          delete state._grokBuildFlowTimer;
+        },
+        10 * 60 * 1000,
+      );
+      json(res, {
+        authUrl: flow.authUrl,
+        state: flow.state,
+        instructions:
+          "Open the URL in your browser. After login, if auto-redirect doesn't work, paste the full redirect URL.",
+      });
+    } catch (err) {
+      logger.error(`[api] Failed to start Grok Build login: ${String(err)}`);
+      error(res, "Failed to start Grok Build login", 500);
+    }
+    return true;
+  }
+
+  if (
+    method === "POST" &&
+    pathname === "/api/subscription/grok-build/exchange"
+  ) {
+    const rawGb = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawGb === null) return true;
+    const parsedGb =
+      PostSubscriptionOpenAIExchangeRequestSchema.safeParse(rawGb);
+    if (!parsedGb.success) {
+      error(
+        res,
+        parsedGb.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedGb.data;
+    try {
+      const { saveCredentials, applySubscriptionCredentials } =
+        await loadSubscriptionAuth();
+      const flow = state._grokBuildFlow;
+
+      if (!flow) {
+        error(res, "No active flow — call /start first", 400);
+        return true;
+      }
+
+      if (body.code) {
+        flow.submitCode(body.code);
+      } else if (!body.waitForCallback) {
+        error(res, "Provide either code or set waitForCallback: true", 400);
+        return true;
+      }
+
+      let credentials: OAuthCredentials;
+      try {
+        credentials = await flow.credentials;
+      } catch (err) {
+        try {
+          flow.close();
+        } catch (closeErr) {
+          logger.debug(
+            `[api] Grok Build OAuth cleanup failed: ${closeErr instanceof Error ? closeErr.message : closeErr}`,
+          );
+        }
+        delete state._grokBuildFlow;
+        clearTimeout(state._grokBuildFlowTimer);
+        delete state._grokBuildFlowTimer;
+        logger.error(`[api] Grok Build exchange failed: ${String(err)}`);
+        error(res, "Grok Build exchange failed", 500);
+        return true;
+      }
+      saveCredentials("grok-build", credentials);
+      await applySubscriptionCredentials(state.config);
+      flow.close();
+      delete state._grokBuildFlow;
+      clearTimeout(state._grokBuildFlowTimer);
+      delete state._grokBuildFlowTimer;
+      json(res, {
+        success: true,
+        expiresAt: credentials.expires,
+      });
+    } catch (err) {
+      logger.error(`[api] Grok Build exchange failed: ${String(err)}`);
+      error(res, "Grok Build exchange failed", 500);
+    }
+    return true;
+  }
+
   if (method === "DELETE" && pathname.startsWith("/api/subscription/")) {
     const provider = pathname.split("/").pop();
     if (isSubscriptionProvider(provider)) {
@@ -352,6 +468,8 @@ function subscriptionSelectionIdForStoredProvider(
       return "openai-subscription";
     case "gemini-cli":
       return "gemini-subscription";
+    case "grok-build":
+      return "grok-build-subscription";
     case "zai-coding":
       return "zai-coding-subscription";
     case "kimi-coding":

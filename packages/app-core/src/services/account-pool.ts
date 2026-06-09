@@ -512,6 +512,7 @@ function isPoolProviderId(value: string): value is PoolProviderId {
     value === "anthropic-subscription" ||
     value === "openai-codex" ||
     value === "gemini-cli" ||
+    value === "grok-build" ||
     value === "zai-coding" ||
     value === "kimi-coding" ||
     value === "deepseek-coding" ||

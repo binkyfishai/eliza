@@ -40,6 +40,7 @@ export type LinkedAccountFlagsConfig = Record<string, LinkedAccountFlagConfig>;
 export const LINKED_ACCOUNT_PROVIDER_IDS = [
 	'anthropic-subscription',
 	'openai-codex',
+	'grok-build',
 	'gemini-cli',
 	'zai-coding',
 	'kimi-coding',

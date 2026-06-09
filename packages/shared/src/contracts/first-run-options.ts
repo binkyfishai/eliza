@@ -191,6 +191,7 @@ export type SubscriptionProviderSelectionId =
   | "anthropic-subscription"
   | "openai-subscription"
   | "gemini-subscription"
+  | "grok-build-subscription"
   | "zai-coding-subscription"
   | "kimi-coding-subscription"
   | "deepseek-coding-subscription";
@@ -199,6 +200,7 @@ export type StoredSubscriptionProviderId =
   | "anthropic-subscription"
   | "openai-codex"
   | "gemini-cli"
+  | "grok-build"
   | "zai-coding"
   | "kimi-coding"
   | "deepseek-coding";
@@ -223,6 +225,12 @@ export const SUBSCRIPTION_PROVIDER_SELECTIONS = [
     labelKey: "providerswitcher.geminiSubscription",
   },
   {
+    id: "grok-build-subscription",
+    storedProvider: "grok-build",
+    family: "grok",
+    labelKey: "providerswitcher.grokBuildSubscription",
+  },
+  {
     id: "zai-coding-subscription",
     storedProvider: "zai-coding",
     family: "zai",
@@ -243,7 +251,14 @@ export const SUBSCRIPTION_PROVIDER_SELECTIONS = [
 ] as const satisfies ReadonlyArray<{
   id: SubscriptionProviderSelectionId;
   storedProvider: StoredSubscriptionProviderId;
-  family: "anthropic" | "openai" | "gemini" | "zai" | "moonshot" | "deepseek";
+  family:
+    | "anthropic"
+    | "openai"
+    | "gemini"
+    | "grok"
+    | "zai"
+    | "moonshot"
+    | "deepseek";
   labelKey: string;
 }>;
 
@@ -309,6 +324,21 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
     storedProvider: "gemini-cli",
   },
   {
+    id: "grok-build-subscription",
+    name: "Grok Build",
+    envKey: null,
+    pluginName: "@elizaos/plugin-xai",
+    keyPrefix: null,
+    description:
+      "Uses eligible xAI Grok OAuth / SuperGrok access for Grok Build and Grok models.",
+    family: "grok",
+    authMode: "subscription",
+    group: "subscription",
+    order: 36,
+    labelKey: "providerswitcher.grokBuildSubscription",
+    storedProvider: "grok-build",
+  },
+  {
     id: "zai-coding-subscription",
     name: "z.ai Coding Plan",
     envKey: null,
@@ -319,7 +349,7 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
     family: "zai",
     authMode: "subscription",
     group: "subscription",
-    order: 36,
+    order: 37,
     labelKey: "providerswitcher.zaiCodingPlan",
     storedProvider: "zai-coding",
   },
@@ -334,7 +364,7 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
     family: "moonshot",
     authMode: "subscription",
     group: "subscription",
-    order: 37,
+    order: 38,
     labelKey: "providerswitcher.kimiCodingPlan",
     storedProvider: "kimi-coding",
   },
@@ -349,7 +379,7 @@ export const FIRST_RUN_PROVIDER_CATALOG = [
     family: "deepseek",
     authMode: "subscription",
     group: "subscription",
-    order: 38,
+    order: 39,
     labelKey: "providerswitcher.deepseekCodingPlan",
     storedProvider: "deepseek-coding",
   },
@@ -678,6 +708,7 @@ export type SubscriptionCredentialSource =
   | "setup-token"
   | "codex-cli"
   | "gemini-cli"
+  | "grok-build"
   | "coding-plan-key"
   | "unavailable"
   | null;
@@ -714,6 +745,10 @@ const FIRST_RUN_PROVIDER_ALIASES: Record<string, FirstRunProviderId> = {
   "gemini-cli": "gemini-subscription",
   "gemini-subscription": "gemini-subscription",
   "google-subscription": "gemini-subscription",
+  "grok-build": "grok-build-subscription",
+  "grok-build-subscription": "grok-build-subscription",
+  "xai-subscription": "grok-build-subscription",
+  supergrok: "grok-build-subscription",
   "zai-coding": "zai-coding-subscription",
   "z.ai-coding": "zai-coding-subscription",
   "zai-coding-subscription": "zai-coding-subscription",
@@ -771,7 +806,14 @@ export function getStoredSubscriptionProvider(
 
 export function getSubscriptionProviderFamily(
   selectionId: SubscriptionProviderSelectionId,
-): "anthropic" | "openai" | "gemini" | "zai" | "moonshot" | "deepseek" {
+):
+  | "anthropic"
+  | "openai"
+  | "gemini"
+  | "grok"
+  | "zai"
+  | "moonshot"
+  | "deepseek" {
   return (
     SUBSCRIPTION_PROVIDER_SELECTIONS.find(
       (provider) => provider.id === selectionId,

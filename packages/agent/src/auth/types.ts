@@ -12,13 +12,15 @@ export type SubscriptionProvider =
   | "anthropic-subscription"
   | "openai-codex"
   | "gemini-cli"
+  | "grok-build"
   | "zai-coding"
   | "kimi-coding"
   | "deepseek-coding";
 
 export type OAuthSubscriptionProvider =
   | "anthropic-subscription"
-  | "openai-codex";
+  | "openai-codex"
+  | "grok-build";
 
 export type CodingPlanKeySubscriptionProvider = "zai-coding" | "kimi-coding";
 
@@ -42,6 +44,7 @@ export const SUBSCRIPTION_PROVIDER_IDS = [
   "anthropic-subscription",
   "openai-codex",
   "gemini-cli",
+  "grok-build",
   "zai-coding",
   "kimi-coding",
   "deepseek-coding",
@@ -50,6 +53,7 @@ export const SUBSCRIPTION_PROVIDER_IDS = [
 export const OAUTH_SUBSCRIPTION_PROVIDER_IDS = [
   "anthropic-subscription",
   "openai-codex",
+  "grok-build",
 ] as const satisfies readonly OAuthSubscriptionProvider[];
 
 export const CODING_PLAN_KEY_SUBSCRIPTION_PROVIDER_IDS = [
@@ -154,6 +158,7 @@ export const SUBSCRIPTION_PROVIDER_MAP: Record<SubscriptionProvider, string> = {
   "anthropic-subscription": "anthropic",
   "openai-codex": "codex-cli",
   "gemini-cli": "gemini-cli",
+  "grok-build": "grok",
   "zai-coding": "zai-coding",
   "kimi-coding": "kimi-coding",
   "deepseek-coding": "deepseek-coding",
@@ -233,6 +238,17 @@ export const SUBSCRIPTION_PROVIDER_METADATA: Record<
     availability: "external",
     setupHint:
       "Run gemini auth login; tokens are not imported into API env vars.",
+  },
+  "grok-build": {
+    providerId: "grok-build",
+    displayName: "Grok Build",
+    selectionIds: ["grok-build-subscription"],
+    allowedClient: "xAI Grok Build / Grok OAuth",
+    billingMode: "subscription-coding-cli",
+    authMode: "oauth",
+    availability: "available",
+    setupHint:
+      "Sign in with an eligible xAI account through Grok Build OAuth.",
   },
   "zai-coding": {
     providerId: "zai-coding",

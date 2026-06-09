@@ -28,6 +28,7 @@ import {
   saveAccount,
 } from "./account-storage.ts";
 import { refreshAnthropicToken } from "./anthropic.ts";
+import { refreshGrokBuildToken } from "./grok-build.ts";
 import { refreshCodexToken } from "./openai-codex.ts";
 import { accountRefreshMutex } from "./refresh-mutex.ts";
 import {
@@ -215,6 +216,8 @@ export async function getAccessToken(
         refreshed = await refreshAnthropicToken(credentials.refresh);
       } else if (provider === "openai-codex") {
         refreshed = await refreshCodexToken(credentials.refresh);
+      } else if (provider === "grok-build") {
+        refreshed = await refreshGrokBuildToken(credentials.refresh);
       } else if (!isOAuthSubscriptionProvider(provider)) {
         logger.error(`[auth] Unknown provider: ${provider}`);
         return null;
@@ -685,6 +688,27 @@ export function applySubscriptionCredentialsLocal(
     );
   }
 
+  const grokBuildAccounts = listProviderAccounts("grok-build");
+  const usableGrokBuildToken = grokBuildAccounts.find(
+    (account) => account.credentials.expires > Date.now(),
+  )?.credentials.access;
+  if (usableGrokBuildToken) {
+    if (!process.env.XAI_API_KEY?.trim() && !process.env.GROK_API_KEY?.trim()) {
+      process.env.XAI_API_KEY = usableGrokBuildToken;
+      logger.info(
+        "[auth] Applied Grok Build OAuth access token to XAI_API_KEY for @elizaos/plugin-xai runtime inference.",
+      );
+    } else {
+      logger.info(
+        "[auth] Grok Build OAuth is available, but an explicit XAI_API_KEY/GROK_API_KEY is already set.",
+      );
+    }
+  } else if (grokBuildAccounts.length > 0) {
+    logger.info(
+      "[auth] Grok Build OAuth is configured but no currently valid access token was available.",
+    );
+  }
+
   for (const provider of ["zai-coding", "kimi-coding"] as const) {
     const accounts = listProviderAccounts(provider);
     if (accounts.length === 0) continue;
@@ -707,7 +731,8 @@ export function applySubscriptionCredentialsLocal(
 
     if (provider) {
       const modelId = SUBSCRIPTION_PROVIDER_MAP[provider];
-      const runtimeApplicable = provider === "openai-codex";
+      const runtimeApplicable =
+        provider === "openai-codex" || provider === "grok-build";
       if (modelId && runtimeApplicable) {
         if (!defaults.model) {
           defaults.model = { primary: modelId };

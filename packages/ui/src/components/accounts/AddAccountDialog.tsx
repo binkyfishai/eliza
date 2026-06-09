@@ -85,6 +85,7 @@ const SUBSCRIPTION_ADD_MODE_BY_PROVIDER: Partial<
 > = {
   "anthropic-subscription": "oauth",
   "openai-codex": "oauth",
+  "grok-build": "oauth",
   "gemini-cli": "external-cli",
   "zai-coding": "api-key",
   "kimi-coding": "api-key",
@@ -118,6 +119,10 @@ function providerDisplayName(
     case "openai-codex":
       return t("accounts.provider.openaiCodex", {
         defaultValue: "OpenAI Codex subscription",
+      });
+    case "grok-build":
+      return t("accounts.provider.grokBuild", {
+        defaultValue: "Grok Build subscription",
       });
     case "gemini-cli":
       return t("accounts.provider.geminiCli", {

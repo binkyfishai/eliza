@@ -37,6 +37,7 @@ export interface SubscriptionStatusProps {
       | "setup-token"
       | "codex-cli"
       | "gemini-cli"
+      | "grok-build"
       | "coding-plan-key"
       | "unavailable"
       | null;
@@ -57,6 +58,8 @@ export interface SubscriptionStatusProps {
   anthropicCliDetected: boolean;
   openaiConnected: boolean;
   setOpenaiConnected: (v: boolean) => void;
+  grokBuildConnected: boolean;
+  setGrokBuildConnected: (v: boolean) => void;
   handleSelectSubscription: (
     providerId: SubscriptionProviderSelectionId,
     activate?: boolean,
@@ -273,6 +276,8 @@ export function SubscriptionStatus({
   anthropicCliDetected,
   openaiConnected,
   setOpenaiConnected,
+  grokBuildConnected,
+  setGrokBuildConnected,
   handleSelectSubscription,
   loadSubscriptionStatus,
 }: SubscriptionStatusProps) {
@@ -297,6 +302,12 @@ export function SubscriptionStatus({
   const [openaiError, setOpenaiError] = useState("");
   const [openaiExchangeBusy, setOpenaiExchangeBusy] = useState(false);
 
+  /* -- Grok Build -------------------------------------------------- */
+  const [grokBuildOAuthStarted, setGrokBuildOAuthStarted] = useState(false);
+  const [grokBuildCallbackUrl, setGrokBuildCallbackUrl] = useState("");
+  const [grokBuildError, setGrokBuildError] = useState("");
+  const [grokBuildExchangeBusy, setGrokBuildExchangeBusy] = useState(false);
+
   /* ── Shared disconnect lock ────────────────────────────────────── */
   const [subscriptionDisconnecting, setSubscriptionDisconnecting] = useState<
     string | null
@@ -316,6 +327,11 @@ export function SubscriptionStatus({
       s.provider === "openai-subscription" || s.provider === "openai-codex",
   );
   const openaiStatus = selectRepresentativeSubscriptionStatus(openaiStatuses);
+  const grokBuildStatuses = subscriptionStatus.filter(
+    (s) => s.provider === "grok-build",
+  );
+  const grokBuildStatus =
+    selectRepresentativeSubscriptionStatus(grokBuildStatuses);
 
   /* ── Shared disconnect ─────────────────────────────────────────── */
   const handleDisconnectSubscription = useCallback(
@@ -324,6 +340,7 @@ export function SubscriptionStatus({
       setSubscriptionDisconnecting(providerId);
       setAnthropicError("");
       setOpenaiError("");
+      setGrokBuildError("");
       try {
         await client.deleteSubscription(
           getStoredSubscriptionProvider(providerId),
@@ -339,6 +356,11 @@ export function SubscriptionStatus({
           setOpenaiOAuthStarted(false);
           setOpenaiCallbackUrl("");
         }
+        if (providerId === "grok-build-subscription") {
+          setGrokBuildConnected(false);
+          setGrokBuildOAuthStarted(false);
+          setGrokBuildCallbackUrl("");
+        }
         await client.restartAgent();
       } catch (err) {
         const msg = t("subscriptionstatus.DisconnectFailedError", {
@@ -346,11 +368,18 @@ export function SubscriptionStatus({
         });
         if (providerId === "anthropic-subscription") setAnthropicError(msg);
         if (providerId === "openai-subscription") setOpenaiError(msg);
+        if (providerId === "grok-build-subscription") setGrokBuildError(msg);
       } finally {
         setSubscriptionDisconnecting(null);
       }
     },
-    [loadSubscriptionStatus, setAnthropicConnected, setOpenaiConnected, t],
+    [
+      loadSubscriptionStatus,
+      setAnthropicConnected,
+      setGrokBuildConnected,
+      setOpenaiConnected,
+      t,
+    ],
   );
 
   /* ── Anthropic handlers ────────────────────────────────────────── */
@@ -511,6 +540,71 @@ export function SubscriptionStatus({
     t,
   ]);
 
+  /* -- Grok Build handlers ---------------------------------------- */
+  const handleGrokBuildStart = useCallback(async () => {
+    setGrokBuildError("");
+    try {
+      const { authUrl } = await client.startGrokBuildLogin();
+      if (authUrl) {
+        await openExternalUrl(authUrl);
+        setGrokBuildOAuthStarted(true);
+        return;
+      }
+      setGrokBuildError(t("settings.subscription.noAuthUrlReturned"));
+    } catch (err) {
+      setGrokBuildError(
+        t("settings.subscription.failedToStartLogin", {
+          message: formatSubscriptionRequestError(err),
+        }),
+      );
+    }
+  }, [t]);
+
+  const handleGrokBuildExchange = useCallback(async () => {
+    if (grokBuildExchangeBusy) return;
+    const normalized = normalizeOpenAICallbackInput(grokBuildCallbackUrl);
+    if (normalized.ok === false) {
+      setGrokBuildError(t(normalized.error));
+      return;
+    }
+
+    setGrokBuildExchangeBusy(true);
+    setGrokBuildError("");
+    try {
+      const data = await client.exchangeGrokBuildCode(normalized.code);
+      if (data.success) {
+        setGrokBuildConnected(true);
+        setGrokBuildOAuthStarted(false);
+        setGrokBuildCallbackUrl("");
+        await handleSelectSubscription("grok-build-subscription");
+        await loadSubscriptionStatus();
+        await client.restartAgent();
+        return;
+      }
+      const msg = data.error ?? t("settings.subscription.exchangeFailed");
+      setGrokBuildError(
+        msg.includes("No active flow")
+          ? t("settings.subscription.loginSessionExpired")
+          : msg,
+      );
+    } catch (err) {
+      setGrokBuildError(
+        t("settings.subscription.exchangeFailedWithMessage", {
+          message: formatSubscriptionRequestError(err),
+        }),
+      );
+    } finally {
+      setGrokBuildExchangeBusy(false);
+    }
+  }, [
+    grokBuildCallbackUrl,
+    grokBuildExchangeBusy,
+    handleSelectSubscription,
+    loadSubscriptionStatus,
+    setGrokBuildConnected,
+    t,
+  ]);
+
   /* ── Anthropic token tab body ──────────────────────────────────── */
   const tokenTabBody = (
     <div className="space-y-2">
@@ -603,10 +697,21 @@ export function SubscriptionStatus({
     </div>
   );
 
+  const grokBuildInstructions = (
+    <div className="rounded-sm border border-border/40 bg-bg/40 px-3 py-2 text-xs-tight leading-relaxed text-muted">
+      {t("subscriptionstatus.AfterLoggingInYo")}{" "}
+      <code className="rounded-sm border border-border bg-card px-1 text-2xs">
+        127.0.0.1
+      </code>
+      {t("subscriptionstatus.CopyTheEntireU")}
+    </div>
+  );
+
   const genericStoredProvider =
     resolvedSelectedId &&
     resolvedSelectedId !== "anthropic-subscription" &&
-    resolvedSelectedId !== "openai-subscription"
+    resolvedSelectedId !== "openai-subscription" &&
+    resolvedSelectedId !== "grok-build-subscription"
       ? getStoredSubscriptionProvider(
           resolvedSelectedId as SubscriptionProviderSelectionId,
         )
@@ -736,6 +841,73 @@ export function SubscriptionStatus({
           }}
           onDisconnect={() =>
             void handleDisconnectSubscription("openai-subscription")
+          }
+        />
+      )}
+
+      {resolvedSelectedId === "grok-build-subscription" && (
+        <SubscriptionProviderPanel
+          providerId="grok-build-subscription"
+          connected={grokBuildConnected}
+          canDisconnect={true}
+          configuredButInvalid={Boolean(
+            grokBuildStatus?.configured && !grokBuildStatus.valid,
+          )}
+          titleConnected={t("subscriptionstatus.ConnectedToGrokBuild", {
+            defaultValue: "Connected to Grok Build",
+          })}
+          titleDisconnected={t("subscriptionstatus.GrokBuildTitle", {
+            defaultValue: "Grok Build subscription",
+          })}
+          loginLabel={t("settings.subscription.loginWithGrokBuild", {
+            defaultValue: "Log in with Grok Build",
+          })}
+          loginHint={t("subscriptionstatus.RequiresGrokBuild", {
+            defaultValue:
+              "Requires SuperGrok or X Premium Plus access. Eliza stores its own xAI OAuth token.",
+          })}
+          connectedSummary={t("subscriptionstatus.YourGrokBuildSubscri", {
+            defaultValue:
+              "Your Grok Build account is linked for xAI inference in this app.",
+          })}
+          invalidWarning={t("subscriptionstatus.GrokBuildInvalid", {
+            defaultValue:
+              "Grok Build credentials are present but expired or invalid. Log in again.",
+          })}
+          noteWhenConnected={
+            <div className="rounded-sm border border-ok/30 bg-ok/5 px-2.5 py-2 text-xs leading-relaxed">
+              {t("subscriptionstatus.GrokBuildStandalone", {
+                defaultValue:
+                  "Standalone Eliza OAuth. No external app profile is used.",
+              })}
+            </div>
+          }
+          oauthInstructions={grokBuildInstructions}
+          oauthInputPlaceholder={t("subscriptionstatus.httpLocalhost145", {
+            defaultValue: "http://127.0.0.1:56122/callback?code=...",
+          })}
+          oauthCode={grokBuildCallbackUrl}
+          setOauthCode={(v) => {
+            setGrokBuildCallbackUrl(v);
+            setGrokBuildError("");
+          }}
+          oauthStarted={grokBuildOAuthStarted}
+          oauthError={grokBuildError}
+          oauthExchangeBusy={grokBuildExchangeBusy}
+          exchangeButtonLabel={t("settings.subscription.completeLogin")}
+          exchangeBusyLabel={t("subscriptionstatus.Completing")}
+          disconnecting={
+            subscriptionDisconnecting === "grok-build-subscription"
+          }
+          onStartOauth={() => void handleGrokBuildStart()}
+          onExchange={() => void handleGrokBuildExchange()}
+          onResetFlow={() => {
+            setGrokBuildOAuthStarted(false);
+            setGrokBuildCallbackUrl("");
+            setGrokBuildError("");
+          }}
+          onDisconnect={() =>
+            void handleDisconnectSubscription("grok-build-subscription")
           }
         />
       )}

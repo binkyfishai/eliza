@@ -186,14 +186,59 @@ export async function resolveProviderCredentialMulti(
     providerId === "anthropic-subscription" ||
     providerId === "openai-codex" ||
     providerId === "gemini-cli" ||
+    providerId === "grok-build" ||
     providerId === "zai-coding" ||
     providerId === "kimi-coding" ||
     providerId === "deepseek-coding";
   if (subscriptionMatch) {
+    if (providerId === "grok-build") {
+      const accounts = listProviderAccounts("grok-build");
+      if (accounts.length > 0) {
+        const pool = getDefaultAccountPool();
+        const account = await pool.select({
+          providerId: "grok-build",
+          sessionKey: opts?.sessionKey,
+          exclude: opts?.exclude,
+        });
+        if (account) {
+          const token = await getAccessToken("grok-build", account.id);
+          if (token) {
+            return {
+              providerId,
+              envVar: "XAI_API_KEY",
+              apiKey: token,
+              authType: "subscription",
+            };
+          }
+        }
+      }
+    }
     logger.info(
       `[credential-resolver] Refusing to expose ${providerId} as a direct API credential; subscription coding plans must use their first-party coding surface.`,
     );
     return null;
+  }
+  if (providerId === "grok" || providerId === "xai") {
+    const accounts = listProviderAccounts("grok-build");
+    if (accounts.length > 0) {
+      const pool = getDefaultAccountPool();
+      const account = await pool.select({
+        providerId: "grok-build",
+        sessionKey: opts?.sessionKey,
+        exclude: opts?.exclude,
+      });
+      if (account) {
+        const token = await getAccessToken("grok-build", account.id);
+        if (token) {
+          return {
+            providerId,
+            envVar: "XAI_API_KEY",
+            apiKey: token,
+            authType: "subscription",
+          };
+        }
+      }
+    }
   }
   const directProvider = DIRECT_ACCOUNT_PROVIDER_BY_REQUEST[providerId];
   if (directProvider) {

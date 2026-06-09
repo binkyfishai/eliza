@@ -24,6 +24,7 @@ export type ProviderId =
   | "capacitor-llama"
   | "anthropic-subscription"
   | "openai-codex"
+  | "grok-build"
   | "gemini-cli"
   | "zai-coding"
   | "kimi-coding"

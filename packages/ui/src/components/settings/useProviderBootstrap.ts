@@ -21,6 +21,8 @@ export interface ProviderBootstrapState {
   anthropicCliDetected: boolean;
   openaiConnected: boolean;
   setOpenaiConnected: Dispatch<SetStateAction<boolean>>;
+  grokBuildConnected: boolean;
+  setGrokBuildConnected: Dispatch<SetStateAction<boolean>>;
   loadSubscriptionStatus: () => Promise<void>;
 }
 
@@ -34,6 +36,7 @@ export function useProviderBootstrap(
   const [anthropicConnected, setAnthropicConnected] = useState(false);
   const [anthropicCliDetected, setAnthropicCliDetected] = useState(false);
   const [openaiConnected, setOpenaiConnected] = useState(false);
+  const [grokBuildConnected, setGrokBuildConnected] = useState(false);
 
   const loadSubscriptionStatus = useCallback(async () => {
     try {
@@ -85,6 +88,9 @@ export function useProviderBootstrap(
       (s) =>
         s.provider === "openai-subscription" || s.provider === "openai-codex",
     );
+    const grokStatuses = subscriptionStatus.filter(
+      (s) => s.provider === "grok-build",
+    );
     // Only treat as "connected" when credentials were linked via the in-app
     // OAuth flow (source === "app"). Claude Code CLI credentials detected on
     // the machine are surfaced separately — the app can't disconnect them.
@@ -103,6 +109,9 @@ export function useProviderBootstrap(
     setOpenaiConnected(
       oaiStatuses.some((status) => status.configured && status.valid),
     );
+    setGrokBuildConnected(
+      grokStatuses.some((status) => status.configured && status.valid),
+    );
   }, [subscriptionStatus]);
 
   return {
@@ -112,6 +121,8 @@ export function useProviderBootstrap(
     anthropicCliDetected,
     openaiConnected,
     setOpenaiConnected,
+    grokBuildConnected,
+    setGrokBuildConnected,
     loadSubscriptionStatus,
   };
 }

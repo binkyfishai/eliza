@@ -24,6 +24,8 @@ import {
   type AccountCredentialRecord,
   saveAccount,
 } from "./account-storage.ts";
+import type { GrokBuildFlow } from "./grok-build.ts";
+import { startGrokBuildLogin } from "./grok-build.ts";
 import type { CodexFlow } from "./openai-codex.ts";
 import { startCodexLogin } from "./openai-codex.ts";
 import type { SubscriptionProvider } from "./types.ts";
@@ -201,6 +203,31 @@ export function startCodexOAuthFlow(
       const completion = (async () => {
         const creds = await flow.credentials;
         return { creds, codexFlow: flow };
+      })();
+      return {
+        authUrl: flow.authUrl,
+        completion,
+        submitCode: (code: string) => flow.submitCode(code),
+        cancel: () => flow.close(),
+      };
+    },
+  });
+}
+
+// xAI Grok Build subscription.
+
+export function startGrokBuildOAuthFlow(
+  opts: StartOptions,
+): Promise<OAuthFlowHandle> {
+  return startGenericFlow({
+    providerId: "grok-build",
+    opts,
+    needsCodeSubmission: false,
+    begin: async () => {
+      const flow: GrokBuildFlow = await startGrokBuildLogin();
+      const completion = (async () => {
+        const creds = await flow.credentials;
+        return { creds };
       })();
       return {
         authUrl: flow.authUrl,

@@ -48,6 +48,7 @@ import {
   getFlowState,
   startAnthropicOAuthFlow,
   startCodexOAuthFlow,
+  startGrokBuildOAuthFlow,
   submitFlowCode,
   subscribeFlow,
 } from "../auth/oauth-flow.ts";
@@ -113,6 +114,7 @@ export function _resetAccountsRoutesPoolCache(): void {
 const SUPPORTED_PROVIDER_IDS = [
   "anthropic-subscription",
   "openai-codex",
+  "grok-build",
   "gemini-cli",
   "zai-coding",
   "kimi-coding",
@@ -362,6 +364,52 @@ async function probeCodexUsage(
         ok: false,
         status: response.status,
         error: `OpenAI ${response.status}: ${text.slice(0, 200)}`,
+        latencyMs,
+      };
+    }
+    return {
+      ok: true,
+      status: response.status,
+      usage: { refreshedAt: Date.now() },
+      latencyMs,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      error: err instanceof Error ? err.message : String(err),
+      latencyMs: Date.now() - start,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function probeGrokBuildUsage(accessToken: string): Promise<{
+  ok: boolean;
+  status: number;
+  usage?: LinkedAccountConfig["usage"];
+  error?: string;
+  latencyMs: number;
+}> {
+  const start = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch("https://api.x.ai/v1/models", {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    const latencyMs = Date.now() - start;
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      return {
+        ok: false,
+        status: response.status,
+        error: `xAI ${response.status}: ${text.slice(0, 200)}`,
         latencyMs,
       };
     }
@@ -809,7 +857,9 @@ async function handleOAuthRoutes(
     const startFlow =
       subscription === "anthropic-subscription"
         ? startAnthropicOAuthFlow
-        : startCodexOAuthFlow;
+        : subscription === "grok-build"
+          ? startGrokBuildOAuthFlow
+          : startCodexOAuthFlow;
     let handle: Awaited<ReturnType<typeof startFlow>>;
     try {
       handle = await startFlow({
@@ -1026,6 +1076,8 @@ async function handleTestAccount(
     probe = await probeAnthropicUsage(accessToken);
   } else if (subscription === "openai-codex") {
     probe = await probeCodexUsage(accessToken, codexAccountId);
+  } else if (subscription === "grok-build") {
+    probe = await probeGrokBuildUsage(accessToken);
   } else if (
     subscription &&
     isCodingPlanKeySubscriptionProvider(subscription)
@@ -1156,6 +1208,8 @@ async function handleRefreshUsage(
       ? await probeAnthropicUsage(accessToken)
       : subscription === "openai-codex"
         ? await probeCodexUsage(accessToken, linked.organizationId)
+        : subscription === "grok-build"
+          ? await probeGrokBuildUsage(accessToken)
         : {
             ok: false,
             status: 0,

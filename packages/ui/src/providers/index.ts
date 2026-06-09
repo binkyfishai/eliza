@@ -26,6 +26,7 @@ const PROVIDER_LOGO_MAP_DARK: Record<string, string> = {
   anthropic: "logos/anthropic-icon-white.png", // Anthropic API Key
   "anthropic-subscription": "logos/claude-icon.png", // Claude Subscription
   "openai-subscription": "logos/openai-icon-white.png", // ChatGPT Subscription
+  "grok-build-subscription": "logos/grok-icon-white.png",
   "gemini-subscription": "logos/gemini-icon.png",
   "zai-coding-subscription": "logos/zai-icon-white.png",
   "kimi-coding-subscription": "logos/openai-icon-white.png",
@@ -51,6 +52,7 @@ const PROVIDER_LOGO_MAP_LIGHT: Record<string, string> = {
   anthropic: "logos/anthropic-icon.png", // Anthropic API Key
   "anthropic-subscription": "logos/claude-icon.png", // Claude Subscription
   "openai-subscription": "logos/openai-icon.png", // ChatGPT Subscription
+  "grok-build-subscription": "logos/grok-icon.png",
   "gemini-subscription": "logos/gemini-icon.png",
   "zai-coding-subscription": "logos/zai-icon.png",
   "kimi-coding-subscription": "logos/openai-icon.png",

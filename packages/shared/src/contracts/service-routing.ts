@@ -261,6 +261,7 @@ export function isLinkedAccountProviderId(
   return (
     value === "anthropic-subscription" ||
     value === "openai-codex" ||
+    value === "grok-build" ||
     value === "gemini-cli" ||
     value === "zai-coding" ||
     value === "kimi-coding" ||

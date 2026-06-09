@@ -35,6 +35,18 @@ describe("applySubscriptionProviderConfig", () => {
     expect(config.agents?.defaults?.model?.primary).toBeUndefined();
   });
 
+  it("configures Grok Build subscriptions for the xAI Grok runtime provider", () => {
+    const config: Partial<ElizaConfig> = {};
+
+    applySubscriptionProviderConfig(config, "grok-build-subscription");
+
+    expect(config.agents?.defaults?.subscriptionProvider).toBe("grok-build");
+    expect(config.agents?.defaults?.model?.primary).toBe("grok");
+    expect(config.env?.XAI_MODEL).toBe("grok-build-0.1");
+    expect(config.env?.XAI_LARGE_MODEL).toBe("grok-build-0.1");
+    expect(config.env?.XAI_SMALL_MODEL).toBe("grok-4.3");
+  });
+
   it("keeps coding-plan endpoint subscriptions out of direct API routing", () => {
     const config: Partial<ElizaConfig> = {};
 

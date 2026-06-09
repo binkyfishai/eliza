@@ -529,6 +529,16 @@ declare module "./client-base" {
       accountId?: string;
       error?: string;
     }>;
+    startGrokBuildLogin(): Promise<{
+      authUrl: string;
+      state: string;
+      instructions: string;
+    }>;
+    exchangeGrokBuildCode(code: string): Promise<{
+      success: boolean;
+      expiresAt?: string;
+      error?: string;
+    }>;
     startAgent(): Promise<AgentStatus>;
     startAndWait(maxWaitMs?: number): Promise<AgentStatus>;
     stopAgent(): Promise<AgentStatus>;
@@ -1538,6 +1548,23 @@ ElizaClient.prototype.exchangeOpenAICode = async function (
   code,
 ) {
   return this.fetch("/api/subscription/openai/exchange", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+};
+
+ElizaClient.prototype.startGrokBuildLogin = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/subscription/grok-build/start", { method: "POST" });
+};
+
+ElizaClient.prototype.exchangeGrokBuildCode = async function (
+  this: ElizaClient,
+  code,
+) {
+  return this.fetch("/api/subscription/grok-build/exchange", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code }),

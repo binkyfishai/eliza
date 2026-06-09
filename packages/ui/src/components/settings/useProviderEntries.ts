@@ -229,10 +229,13 @@ export function useProviderEntries({
       current: !cloudCallsDisabled && isCloudSelected,
     });
     for (const provider of SUBSCRIPTION_PROVIDER_SELECTIONS) {
+      const catalogOption = getFirstRunProviderOption(provider.id);
       entries.push({
         id: provider.id,
         icon: KeyRound,
-        label: t(provider.labelKey, { defaultValue: provider.id }),
+        label: t(provider.labelKey, {
+          defaultValue: catalogOption?.name ?? provider.id,
+        }),
         category: "subscription",
         status: getProviderStatus(provider.id),
         current: !cloudCallsDisabled && resolvedSelectedId === provider.id,

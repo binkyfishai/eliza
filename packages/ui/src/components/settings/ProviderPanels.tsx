@@ -201,6 +201,8 @@ export interface SubscriptionPanelProps {
   anthropicCliDetected: boolean;
   openaiConnected: boolean;
   setOpenaiConnected: Dispatch<SetStateAction<boolean>>;
+  grokBuildConnected: boolean;
+  setGrokBuildConnected: Dispatch<SetStateAction<boolean>>;
   onSelectSubscription: (
     providerId: SubscriptionProviderSelectionId,
     activate?: boolean,
@@ -220,6 +222,8 @@ export function SubscriptionPanel({
   anthropicCliDetected,
   openaiConnected,
   setOpenaiConnected,
+  grokBuildConnected,
+  setGrokBuildConnected,
   onSelectSubscription,
   loadSubscriptionStatus,
 }: SubscriptionPanelProps) {
@@ -263,6 +267,8 @@ export function SubscriptionPanel({
           anthropicCliDetected={anthropicCliDetected}
           openaiConnected={openaiConnected}
           setOpenaiConnected={setOpenaiConnected}
+          grokBuildConnected={grokBuildConnected}
+          setGrokBuildConnected={setGrokBuildConnected}
           handleSelectSubscription={onSelectSubscription}
           loadSubscriptionStatus={loadSubscriptionStatus}
         />

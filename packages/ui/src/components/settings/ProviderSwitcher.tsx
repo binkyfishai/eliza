@@ -50,6 +50,8 @@ function getSubscriptionProviderDescription(
       return "Claude Code and task-agent access.";
     case "openai-subscription":
       return "Codex-backed coding access.";
+    case "grok-build-subscription":
+      return "Grok Build / SuperGrok xAI access.";
     case "gemini-subscription":
       return "Gemini CLI coding access.";
     case "zai-coding-subscription":
@@ -232,6 +234,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               anthropicCliDetected={bootstrap.anthropicCliDetected}
               openaiConnected={bootstrap.openaiConnected}
               setOpenaiConnected={bootstrap.setOpenaiConnected}
+              grokBuildConnected={bootstrap.grokBuildConnected}
+              setGrokBuildConnected={bootstrap.setGrokBuildConnected}
               onSelectSubscription={selection.handleSelectSubscription}
               loadSubscriptionStatus={bootstrap.loadSubscriptionStatus}
             />

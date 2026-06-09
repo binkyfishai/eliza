@@ -12,6 +12,8 @@ const PROVIDER_HINTS = [
   "openai-codex",
   "openai-subscription",
   "anthropic-subscription",
+  "grok-build-subscription",
+  "grok-build",
   "gemini-subscription",
   "gemini-cli",
   "zai-coding-subscription",

@@ -638,9 +638,17 @@ export function applySubscriptionProviderConfig(
     // Only set model.primary for providers with a runtime model-provider
     // plugin. Anthropic subscription tokens are restricted to Claude Code
     // CLI (TOS), so the runtime cannot use them for LLM inference.
-    const runtimeApplicable = subscriptionKey === "openai-codex";
+    const runtimeApplicable =
+      subscriptionKey === "openai-codex" || subscriptionKey === "grok-build";
     if (runtimeApplicable) {
       defaults.model = { ...defaults.model, primary: modelProvider };
+      if (subscriptionKey === "grok-build") {
+        config.env ??= {};
+        const env = config.env as Record<string, unknown>;
+        env.XAI_MODEL ??= "grok-build-0.1";
+        env.XAI_LARGE_MODEL ??= "grok-build-0.1";
+        env.XAI_SMALL_MODEL ??= "grok-4.3";
+      }
     }
   }
 }

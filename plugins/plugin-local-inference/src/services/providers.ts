@@ -248,6 +248,18 @@ const OPENAI_CODEX_PROVIDER: ProviderDefinition = {
 	configureHref: "#ai-model",
 };
 
+const GROK_BUILD_PROVIDER: ProviderDefinition = {
+	id: "grok-build",
+	label: "Grok Build subscription",
+	kind: "cloud-subscription",
+	description: "xAI Grok Build access through linked SuperGrok or X Premium Plus accounts.",
+	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+	async getEnableState(): Promise<ProviderEnableState> {
+		return subscriptionEnableState("grok-build");
+	},
+	configureHref: "#ai-model",
+};
+
 const GEMINI_CLI_PROVIDER: ProviderDefinition = {
 	id: "gemini-cli",
 	label: "Gemini CLI subscription",
@@ -393,6 +405,7 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
 	CAPACITOR_LLAMA_PROVIDER,
 	ANTHROPIC_SUBSCRIPTION_PROVIDER,
 	OPENAI_CODEX_PROVIDER,
+	GROK_BUILD_PROVIDER,
 	GEMINI_CLI_PROVIDER,
 	ZAI_CODING_PROVIDER,
 	KIMI_CODING_PROVIDER,
@@ -457,6 +470,7 @@ async function apiKeyOrLinkedAccountState(
 type SubscriptionProviderStatusId =
 	| "anthropic-subscription"
 	| "openai-codex"
+	| "grok-build"
 	| "gemini-cli"
 	| "zai-coding"
 	| "kimi-coding"

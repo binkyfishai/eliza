@@ -66,6 +66,7 @@ describe('@elizaos/contracts public literals', () => {
 		expect([...LINKED_ACCOUNT_PROVIDER_IDS]).toEqual([
 			'anthropic-subscription',
 			'openai-codex',
+			'grok-build',
 			'gemini-cli',
 			'zai-coding',
 			'kimi-coding',
