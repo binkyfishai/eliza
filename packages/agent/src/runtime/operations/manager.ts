@@ -67,6 +67,7 @@ export interface DefaultRuntimeOperationManagerOptions {
 }
 
 const DEFAULT_CLASSIFIER: IntentClassifier = () => "cold";
+const TIER_ORDER: readonly ReloadTier[] = ["hot", "warm", "cold"];
 
 function strategyErrorCode(err: unknown): OperationErrorCode {
   const code = (err as { code?: unknown } | null)?.code;
@@ -211,13 +212,19 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
       finishedAt: validateAt,
     });
 
-    const strategy = this.strategies[op.tier];
+    const resolvedTier = this.resolveExecutableTier(op.tier);
+    const strategy = this.strategies[resolvedTier];
     if (!strategy) {
       await this.failOperation(id, {
         message: `No strategy registered for tier=${op.tier}`,
         code: "no-strategy-for-tier",
       });
       return;
+    }
+    if (resolvedTier !== op.tier) {
+      logger.info(
+        `[runtime-ops] Upgraded op ${id} tier=${op.tier} -> ${resolvedTier} because no ${op.tier} strategy is registered`,
+      );
     }
 
     const runtime = this.runtime();
@@ -306,5 +313,12 @@ export class DefaultRuntimeOperationManager implements RuntimeOperationManager {
     logger.warn(
       `[runtime-ops] Operation ${id} failed: ${error.code ?? "unknown"} — ${error.message}`,
     );
+  }
+
+  private resolveExecutableTier(tier: ReloadTier): ReloadTier {
+    const startIndex = TIER_ORDER.indexOf(tier);
+    const search =
+      startIndex >= 0 ? TIER_ORDER.slice(startIndex) : (["cold"] as const);
+    return search.find((candidate) => this.strategies[candidate]) ?? tier;
   }
 }

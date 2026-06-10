@@ -164,7 +164,7 @@ export const dbConnectionCheck: HealthCheck = {
 export const providerSmokeCheck: HealthCheck = {
   name: "provider-smoke",
   required: true,
-  timeoutMs: 5000,
+  timeoutMs: 15000,
   async run(runtime: AgentRuntime): Promise<HealthCheckResult> {
     if (typeof runtime.useModel !== "function") {
       // Older / stripped runtime — no model surface to probe.

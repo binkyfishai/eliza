@@ -18,12 +18,25 @@ describe("applySubscriptionProviderConfig", () => {
   });
 
   it("configures Codex subscriptions for the Codex CLI model provider", () => {
-    const config: Partial<ElizaConfig> = {};
+    const config: Partial<ElizaConfig> = {
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+          accountId: "elizacloud",
+        },
+      },
+    };
 
     applySubscriptionProviderConfig(config, "openai-codex");
 
     expect(config.agents?.defaults?.subscriptionProvider).toBe("openai-codex");
     expect(config.agents?.defaults?.model?.primary).toBe("codex-cli");
+    expect(config.serviceRouting?.llmText).toEqual({
+      backend: "codex-cli",
+      transport: "direct",
+      primaryModel: "codex-cli",
+    });
   });
 
   it("keeps Gemini CLI subscriptions out of runtime model routing", () => {
@@ -36,12 +49,35 @@ describe("applySubscriptionProviderConfig", () => {
   });
 
   it("configures Grok Build subscriptions for the xAI Grok runtime provider", () => {
-    const config: Partial<ElizaConfig> = {};
+    const config: Partial<ElizaConfig> = {
+      serviceRouting: {
+        llmText: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+          accountId: "elizacloud",
+        },
+        tts: {
+          backend: "elizacloud",
+          transport: "cloud-proxy",
+          accountId: "elizacloud",
+        },
+      },
+    };
 
     applySubscriptionProviderConfig(config, "grok-build-subscription");
 
     expect(config.agents?.defaults?.subscriptionProvider).toBe("grok-build");
     expect(config.agents?.defaults?.model?.primary).toBe("grok");
+    expect(config.serviceRouting?.llmText).toEqual({
+      backend: "grok",
+      transport: "direct",
+      primaryModel: "grok",
+    });
+    expect(config.serviceRouting?.tts).toEqual({
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+      accountId: "elizacloud",
+    });
     expect(config.env?.XAI_MODEL).toBe("grok-build-0.1");
     expect(config.env?.XAI_LARGE_MODEL).toBe("grok-build-0.1");
     expect(config.env?.XAI_SMALL_MODEL).toBe("grok-4.3");

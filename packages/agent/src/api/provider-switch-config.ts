@@ -232,6 +232,19 @@ function setPrimaryModel(
   defaults.model = { ...defaults.model, primary: primaryModel };
 }
 
+function setDirectLlmRoute(
+  config: MutableElizaConfig,
+  backend: string,
+  primaryModel?: string,
+): void {
+  const serviceRouting = ensureServiceRouting(config);
+  serviceRouting.llmText = {
+    backend,
+    transport: "direct",
+    ...(primaryModel ? { primaryModel } : {}),
+  };
+}
+
 function clearPersistedEnvValue(config: MutableElizaConfig, key: string): void {
   const env = asRecord(config.env);
   const vars = asRecord(env?.vars);
@@ -642,6 +655,7 @@ export function applySubscriptionProviderConfig(
       subscriptionKey === "openai-codex" || subscriptionKey === "grok-build";
     if (runtimeApplicable) {
       defaults.model = { ...defaults.model, primary: modelProvider };
+      setDirectLlmRoute(config, modelProvider, modelProvider);
       if (subscriptionKey === "grok-build") {
         config.env ??= {};
         const env = config.env as Record<string, unknown>;
